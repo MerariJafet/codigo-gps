@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Codigo GPS
+Comment=Visualizador de arquitecturas de código
+Exec=/home/merari-acero/Escritorio/codigo GPS/desktop/codigo-gps-desktop/src-tauri/target/release/codigo-gps-desktop
+Icon=/home/merari-acero/.local/share/icons/codigo-gps.png
+Terminal=false
+Categories=Development;IDE;
