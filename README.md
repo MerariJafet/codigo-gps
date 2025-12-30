@@ -2,7 +2,13 @@
 
 > **Navega tu código como un holograma.** Visualización 3D interactiva de bases de código complejas.
 
-![Hologram Demo](docs/demo.gif)
+![Hologram Demo](docs/demo.webp)
+
+## 📸 Screenshots
+
+| Dashboard | Holograma |
+|-----------|-----------|
+| ![Dashboard](docs/screenshots/dashboard.png) | ![Holograma](docs/screenshots/graph_hologram.png) |
 
 ## 🚀 ¿Qué es CÓDIGO GPS?
 
