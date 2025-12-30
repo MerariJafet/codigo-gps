@@ -1,5 +1,7 @@
 # CÓDIGO GPS 🌐
 
+[![CI](https://github.com/MerariJafet/codigo-gps/actions/workflows/ci.yml/badge.svg)](https://github.com/MerariJafet/codigo-gps/actions/workflows/ci.yml)
+
 > **Navega tu código como un holograma.** Visualización 3D interactiva de bases de código complejas.
 
 ![Hologram Demo](docs/demo.webp)
@@ -30,10 +32,10 @@ El sistema utiliza una arquitectura cliente-servidor moderna:
 
 ```mermaid
 graph LR
-    User[Usuario] --> Frontend
-    Frontend[Frontend (Next.js + Three.js)] <-->|HTTP/REST| Backend
-    Backend[Backend (FastAPI)] -->|Git/FS| LocalRepo[Repositorio Local]
-    Backend -->|NetworkX| Graph[Grafo de Memoria]
+    User["Usuario"] --> Frontend["Frontend (Next.js + Three.js)"]
+    Frontend <-->|HTTP/REST| Backend["Backend (FastAPI)"]
+    Backend -->|Git/FS| LocalRepo["Repositorio Local"]
+    Backend -->|NetworkX| Graph["Grafo de Memoria"]
 ```
 
 - **Frontend**: Next.js 14, React Three Fiber (Visualización 3D), TailwindCSS.
@@ -111,6 +113,11 @@ Copiar `.env.example` (si existe) o configurar manualmente:
 -   **Error de CORS**: Asegúrate de acceder vía `localhost:3000`. Si el backend está en otro puerto, ajusta `next.config.ts`.
 -   **File System Access**: Chrome/Edge requieren permisos explícitos para leer carpetas locales. Si falla, usa la opción de "Subir ZIP" o el explorador de servidor.
 -   **Backend Offline**: Verifica `http://localhost:8000/health`.
+
+## ⚡ Rendimiento & Límites
+
+CÓDIGO GPS está diseñado para manejar bases de código de tamaño pequeño a mediano con alta fluidez (>60 FPS).
+Consulta [BENCHMARKS.md](docs/BENCHMARKS.md) para ver métricas detalladas y metodologías de prueba.
 
 ## 🗺️ Roadmap
 
