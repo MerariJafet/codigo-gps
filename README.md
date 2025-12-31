@@ -1,77 +1,79 @@
 # CÓDIGO GPS 🌐
 
 [![CI](https://github.com/MerariJafet/codigo-gps/actions/workflows/ci.yml/badge.svg)](https://github.com/MerariJafet/codigo-gps/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Version](https://img.shields.io/github/v/release/MerariJafet/codigo-gps)](https://github.com/MerariJafet/codigo-gps/releases)
 
-> **Navega tu código como un holograma.** Visualización 3D interactiva de bases de código complejas.
+> **Navigate your code like a hologram.** Interactive 3D visualization of complex codebases.
 
 ![Hologram Demo](docs/demo.webp)
 
 ## 📸 Screenshots
 
-| Dashboard | Holograma |
+| Dashboard | Hologram |
 |-----------|-----------|
-| ![Dashboard](docs/screenshots/dashboard.png) | ![Holograma](docs/screenshots/graph_hologram.png) |
+| ![Dashboard](docs/screenshots/dashboard.png) | ![Hologram](docs/screenshots/graph_hologram.png) |
 
-## 🚀 ¿Qué es CÓDIGO GPS?
+## 🚀 What is CÓDIGO GPS?
 
-Entender bases de código grandes es difícil. Navegar por archivos planos y carpetas anidadas no revela la estructura real del software.
+Understanding large codebases is hard. Navigating flat files and nested folders doesn't reveal the true structure of software.
 
-**CÓDIGO GPS** transforma repositorios de Git en **grafos 3D interactivos**, permitiendo a desarrolladores y arquitectos visualizar dependencias, complejidad y la topología real de sus sistemas en tiempo real.
+**CÓDIGO GPS** transforms Git repositories into **interactive 3D graphs**, allowing developers and architects to visualize dependencies, complexity, and the real topology of their systems in real-time.
 
 ## ✨ Features
 
-- **Holograma 3D Interactivo**: Visualiza nodos (archivos) y aristas (dependencias) en un entorno 3D inmersivo.
-- **Nebulosas**: Agrupación visual de carpetas y módulos para identificar dominios rápidamente.
-- **Modo Mentor**: Análisis inteligente que sugiere refactorizaciones y detecta "code smells" visualmente.
-- **Análisis de Impacto**: Selecciona un nodo para ver qué partes del sistema dependen de él.
-- **Soporte Local**: Analiza tu código sin subirlo a la nube (Privacidad 100%).
+- **Interactive 3D Hologram**: Visualize nodes (files) and edges (dependencies) in an immersive 3D environment.
+- **Nebulas**: Visual grouping of folders and modules to identify domains at a glance.
+- **Mentor Mode**: Intelligent analysis suggesting refactors and detecting code smells visually.
+- **Impact Analysis**: Select a node to see which parts of the system depend on it.
+- **Local Support**: Analyze your code without uploading to the cloud (100% Privacy).
 
-## 🏗️ Arquitectura
+## 🏗️ Architecture
 
-El sistema utiliza una arquitectura cliente-servidor moderna:
+The system uses a modern client-server architecture. See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for details.
 
 ```mermaid
 graph LR
-    User["Usuario"] --> Frontend["Frontend (Next.js + Three.js)"]
+    User["User"] --> Frontend["Frontend (Next.js + Three.js)"]
     Frontend <-->|HTTP/REST| Backend["Backend (FastAPI)"]
-    Backend -->|Git/FS| LocalRepo["Repositorio Local"]
-    Backend -->|NetworkX| Graph["Grafo de Memoria"]
+    Backend -->|Git/FS| LocalRepo["Local Repository"]
+    Backend -->|NetworkX| Graph["In-Memory Graph"]
 ```
 
-- **Frontend**: Next.js 14, React Three Fiber (Visualización 3D), TailwindCSS.
-- **Backend**: Python FastAPI, NetworkX (Análisis de grafos), GitPython.
+- **Frontend**: Next.js 14, React Three Fiber (3D Visualization), TailwindCSS.
+- **Backend**: Python FastAPI, NetworkX (Graph Analysis), GitPython.
 
-## 🛠️ Cómo correr el proyecto
+## 🛠️ Getting Started
 
-### Opción A: Docker (Recomendada) 🐳
+### Option A: Docker (Recommended) 🐳
 
-Prerrequisitos: Docker y Docker Compose instalados.
+Prerequisites: Docker and Docker Compose installed.
 
-1.  Clonar el repositorio:
+1.  Clone the repository:
     ```bash
-    git clone https://github.com/tu-usuario/codigo-gps.git
+    git clone https://github.com/MerariJafet/codigo-gps.git
     cd codigo-gps
     ```
 
-2.  Levantar servicios:
+2.  Spin up services:
     ```bash
     docker-compose up --build
     ```
 
-3.  Abrir en el navegador:
+3.  Open in your browser:
     - Frontend: [http://localhost:3000](http://localhost:3000)
-    - API Documentación: [http://localhost:8000/docs](http://localhost:8000/docs)
+    - API Docs: [http://localhost:8000/docs](http://localhost:8000/docs)
 
-### Opción B: Ejecución Local 💻
+### Option B: Local Execution 💻
 
-Prerrequisitos: Python 3.10+, Node.js 18+.
+Prerequisites: Python 3.10+, Node.js 18+.
 
-1.  Usar el script de arranque automático (Linux/Mac):
+1.  Use the automatic start script (Linux/Mac):
     ```bash
     ./scripts/dev.sh
     ```
 
-2.  O ejecutar manualmente:
+2.  Or run manually:
 
     **Backend:**
     ```bash
@@ -84,52 +86,48 @@ Prerrequisitos: Python 3.10+, Node.js 18+.
 
     **Frontend:**
     ```bash
-    # En otra terminal
+    # In another terminal
     cd frontend
     npm install
     npm run dev
     ```
 
-## ⚙️ Configuración
+## ⚙️ Configuration
 
-El proyecto funciona *out-of-the-box*, pero puedes configurar variables de entorno.
-Copiar `.env.example` (si existe) o configurar manualmente:
+The project works out-of-the-box, but you can configure environment variables.
+Copy `.env.example` or configure manually:
 
 **Frontend (.env.local):**
-`API_BASE_URL`: URL del backend (default: `http://localhost:8000`)
+`API_BASE_URL`: Backend URL (default: `http://localhost:8000`)
 
-## 📖 Uso
+## 📖 Usage
 
-1.  **Cargar Repositorio**: Al abrir la app, selecciona la carpeta de tu proyecto local.
-2.  **Explorar Grafo**:
-    - **Click Izquierdo**: Rotar cámara.
-    - **Click Derecho**: Pan.
+1.  **Load Repository**: Open the app and select your local project folder.
+2.  **Explore Graph**:
+    - **Left Click**: Rotate camera.
+    - **Right Click**: Pan.
     - **Scroll**: Zoom.
-    - **Click en Nodo**: Ver detalles del archivo y conexiones.
-3.  **Filtrar**: Usa el panel lateral para filtrar por tipo de archivo o métricas.
+    - **Click on Node**: View file details and connections.
+3.  **Filter**: Use the sidebar to filter by file type or metrics.
 
 ## 🔧 Troubleshooting
 
--   **Error de CORS**: Asegúrate de acceder vía `localhost:3000`. Si el backend está en otro puerto, ajusta `next.config.ts`.
--   **File System Access**: Chrome/Edge requieren permisos explícitos para leer carpetas locales. Si falla, usa la opción de "Subir ZIP" o el explorador de servidor.
--   **Backend Offline**: Verifica `http://localhost:8000/health`.
+-   **CORS Error**: Ensure you access via `localhost:3000`. If backend is on another port, adjust `next.config.ts`.
+-   **File System Access**: Chrome/Edge require explicit permissions for local folders. If it fails, use "Upload ZIP" or the server explorer.
+-   **Backend Offline**: Verify `http://localhost:8000/health`.
 
-## ⚡ Rendimiento & Límites
+## ⚡ Performance & Limits
 
-CÓDIGO GPS está diseñado para manejar bases de código de tamaño pequeño a mediano con alta fluidez (>60 FPS).
-Consulta [BENCHMARKS.md](docs/BENCHMARKS.md) para ver métricas detalladas y metodologías de prueba.
+CÓDIGO GPS is designed to handle small to medium codebases with high fluidity (>60 FPS).
+Check [BENCHMARKS.md](docs/BENCHMARKS.md) for detailed metrics and testing methodology.
 
 ## 🗺️ Roadmap
 
-- [ ] Soporte para más lenguajes (Java, C++).
-- [ ] Integración con GitHub API para repos remotos.
-- [ ] Colaboración en tiempo real (Multi-user holograms).
-- [ ] Versión Desktop (Electron/Tauri) - *En progreso*.
+- [ ] Support for more languages (Java, C++).
+- [ ] GitHub API integration for remote repos.
+- [ ] Real-time collaboration.
+- [ ] Desktop version (Electron/Tauri) - *In progress*.
 
-## 🤝 Contribución
+## 📄 License
 
-¡Las PRs son bienvenidas! Por favor abre un issue antes de cambios grandes.
-
-## 📄 Licencia
-
-Este proyecto está bajo la licencia MIT. Ver [LICENSE](LICENSE) para más detalles.
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
