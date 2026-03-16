@@ -20,6 +20,7 @@ interface GraphVizProps {
 
 export default function GraphViz({ data, onNodeClick, performanceMode, onStatsUpdate, groupByFolder }: GraphVizProps) {
     const fgRef = useRef<any>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
     const [dimensions, setDimensions] = useState({ w: 800, h: 600 });
     // ...
     const frameRef = useRef<number>(0);
@@ -37,12 +38,18 @@ export default function GraphViz({ data, onNodeClick, performanceMode, onStatsUp
     const [hoveredFolder, setHoveredFolder] = useState<string | null>(null);
 
     useEffect(() => {
-        if (typeof window !== 'undefined') {
-            setDimensions({ w: window.innerWidth, h: window.innerHeight });
-            const handleResize = () => setDimensions({ w: window.innerWidth, h: window.innerHeight });
-            window.addEventListener('resize', handleResize);
-            return () => window.removeEventListener('resize', handleResize);
-        }
+        if (!containerRef.current) return;
+
+        const resizeObserver = new ResizeObserver((entries) => {
+            for (let entry of entries) {
+                const { width, height } = entry.contentRect;
+                setDimensions({ w: width, h: height });
+            }
+        });
+
+        resizeObserver.observe(containerRef.current);
+
+        return () => resizeObserver.disconnect();
     }, []);
 
     // Stats Loop
@@ -272,7 +279,7 @@ export default function GraphViz({ data, onNodeClick, performanceMode, onStatsUp
         : hoveredNode;
 
     return (
-        <div className="w-full h-full relative">
+        <div ref={containerRef} className="w-full h-full relative overflow-hidden">
             <NodeTooltip
                 // @ts-ignore
                 node={activeNode}
@@ -334,7 +341,9 @@ export default function GraphViz({ data, onNodeClick, performanceMode, onStatsUp
                 }}
             />
 
-            <LegendPanel folderStats={folderStats} onFolderHover={setHoveredFolder} />
+            {folderStats.length > 0 && (
+                <LegendPanel folderStats={folderStats} onFolderHover={setHoveredFolder} />
+            )}
         </div>
     );
 }

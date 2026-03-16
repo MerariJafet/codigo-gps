@@ -46,8 +46,14 @@ class GraphSchema(BaseModel):
             }
         }
 
+class FileManifestEntry(BaseModel):
+    path: str
+    content: str
+    size: int
+
 class AnalyzeRequest(BaseModel):
-    repo_path: str
+    repo_path: Optional[str] = None
+    file_manifest: Optional[List[FileManifestEntry]] = None
     options: Optional[dict] = None
 
     class Config:

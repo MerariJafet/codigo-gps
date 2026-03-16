@@ -7,7 +7,7 @@ from .graph_builder import GraphBuilder
 from .config import AnalysisOptions
 from .models import Graph
 
-def analyze_repo(repo_path: str, options: AnalysisOptions | None = None) -> Graph:
+def analyze_repo(repo_path: str | None = None, file_manifest: List[Dict] | None = None, options: AnalysisOptions | None = None) -> Graph:
     """
     Analiza un repositorio de código y regresa un objeto Graph con:
     - nodes: archivos (con métricas, clasificación, folders)

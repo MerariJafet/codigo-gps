@@ -15,9 +15,26 @@ router = APIRouter(dependencies=[Depends(get_current_user_permissive), Depends(r
 @router.post("/analyze", response_model=GraphSchema)
 async def analyze(request: AnalyzeRequest, semaphore: asyncio.Semaphore = Depends(get_concurrency_limiter)):
     async with semaphore:
-        logger.info(f"Analyze request for: {request.repo_path}")
-        repo_path = validate_repo_path(request.repo_path)
-        repo_path_str = str(repo_path)
+        logger.info(f"Analyze request for: {request.repo_path or 'file_manifest'}")
+        
+        if request.repo_path:
+            # Original repo_path flow
+            repo_path = validate_repo_path(request.repo_path)
+            repo_path_str = str(repo_path)
+        elif request.file_manifest:
+            # Web mode: file manifest flow
+            # For now, create a temporary directory and write files
+            import tempfile
+            import os
+            temp_dir = tempfile.mkdtemp()
+            for file_entry in request.file_manifest:
+                file_path = os.path.join(temp_dir, file_entry.path)
+                os.makedirs(os.path.dirname(file_path), exist_ok=True)
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write(file_entry.content)
+            repo_path_str = temp_dir
+        else:
+            raise HTTPException(status_code=400, detail="Either repo_path or file_manifest must be provided")
     
         # Build options
         options = None

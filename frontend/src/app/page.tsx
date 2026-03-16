@@ -3,11 +3,11 @@
 import { useState, useEffect } from 'react';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import dynamic from 'next/dynamic';
 
 import TopBar from '@/components/TopBar';
 import SidebarLeft from '@/components/SidebarLeft';
 import SidebarRight from '@/components/SidebarRight';
-import GraphViz from '@/components/GraphViz';
 import RepoLoader from '@/components/RepoLoader';
 import NoProjectState from '@/components/NoProjectState';
 import PerformancePanel, { PerformanceMode } from '@/components/PerformancePanel';
@@ -15,6 +15,20 @@ import { getTauriToken, isTauri, selectFolder } from '@/lib/tauri';
 import LegendPanel from '@/components/LegendPanel';
 import FileExplorerModal from '@/components/FileExplorerModal';
 import { apiClient } from '@/lib/apiClient';
+import RunOverlay, { RunState } from '@/components/RunOverlay';
+
+// Import GraphViz dynamically to avoid SSR hydration issues
+const GraphViz = dynamic(() => import('@/components/GraphViz'), { 
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-full flex items-center justify-center bg-black/20">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#00F0FF] mx-auto mb-4"></div>
+        <p className="text-[#00F0FF] text-sm">Cargando visualización 3D...</p>
+      </div>
+    </div>
+  )
+});
 
 export default function Home() {
   const [currentPath, setCurrentPath] = useState('');
@@ -22,12 +36,22 @@ export default function Home() {
   const [graphData, setGraphData] = useState<any>(null);
   const [selectedNode, setSelectedNode] = useState<any>(null);
   const [status, setStatus] = useState<'idle' | 'scanning' | 'ready' | 'error'>('idle');
+  const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
 
   const [perfMode, setPerfMode] = useState<PerformanceMode>('balanced');
   const [perfStats, setPerfStats] = useState({ fps: 60, nodeCount: 0, linkCount: 0 });
   const [groupByFolder, setGroupByFolder] = useState(false);
 
   const [showFileExplorer, setShowFileExplorer] = useState(false);
+
+  // Runtime mode detection
+  const [runtimeMode, setRuntimeMode] = useState<'web' | 'tauri'>('web');
+  const [fileManifest, setFileManifest] = useState<any[]>([]);
+
+  // Run sequence state
+  const [runState, setRunState] = useState<RunState>('idle');
+  const [runLogs, setRunLogs] = useState<string[]>([]);
+  const [runError, setRunError] = useState<string>('');
 
   useEffect(() => {
     // Initialize Auth
@@ -40,10 +64,13 @@ export default function Home() {
     };
     initAuth();
 
-    // Health Check
-    apiClient.health()
-      .then(() => toast.success("System Online: Connected to Backend"))
-      .catch(() => toast.error("Offline: Backend unreachable"));
+    // Detect runtime mode
+    const mode = isTauri() ? 'tauri' : 'web';
+    setRuntimeMode(mode);
+    console.log(`Runtime mode: ${mode.toUpperCase()}`);
+
+    // Initial backend status check
+    checkBackendStatus();
 
     // Check for graph_id in URL params if we are in service mode
     if (typeof window !== 'undefined') {
@@ -76,33 +103,110 @@ export default function Home() {
     }
   };
 
-  const handleRun = async () => {
-    if (!currentPath) return;
+  const checkBackendStatus = async (): Promise<boolean> => {
+    try {
+      await apiClient.health();
+      setBackendOnline(true);
+      return true;
+    } catch (e) {
+      setBackendOnline(false);
+      return false;
+    }
+  };
 
+  const addRunLog = (message: string) => {
+    setRunLogs(prev => [...prev, message]);
+  };
+
+  const handleRun = async () => {
+    // Explicit validation: RUN requires a valid project path
+    if (!currentPath || currentPath.trim() === '') {
+      const errorMsg = 'No project path selected. Please select a folder first.';
+      setRunError(errorMsg);
+      addRunLog(`ERROR: ${errorMsg}`);
+      toast.error(errorMsg);
+      return;
+    }
+
+    addRunLog(`Starting analysis for project: ${currentPath}`);
+
+    // Reset run state
+    setRunState('connecting');
+    setRunLogs([]);
+    setRunError('');
+    setGraphData(null);
     setStatus('scanning');
-    setGraphData(null); // Clear previous
 
     try {
+      // Step 1: CONNECTING BACKEND
+      addRunLog('Initiating backend connection...');
+      const backendAvailable = await checkBackendStatus();
+
+      if (!backendAvailable) {
+        throw new Error('Backend service is offline. Please start the backend service and try again.');
+      }
+
+      addRunLog('Backend connection established');
+      setRunState('indexing');
+
+      // Step 2: INDEXING FILES (simulated)
+      addRunLog('Scanning project directory...');
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      addRunLog(`Found project files in: ${currentPath}`);
+
+      setRunState('building');
+
+      // Step 3: BUILDING GRAPH
+      addRunLog('Analyzing file dependencies...');
+      addRunLog(`API Base URL: ${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'}`);
+      addRunLog(`Analysis endpoint: /api/v1/analyze`);
+
       const headers: any = { 'Content-Type': 'application/json' };
       if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
 
-      const res = await apiClient.post('/api/v1/analyze', { repo_path: currentPath }, { headers });
+      let requestBody: any = { options: {} };
+      if (runtimeMode === 'tauri') {
+        requestBody.repo_path = currentPath;
+      } else {
+        // Web mode: send file manifest
+        requestBody.file_manifest = fileManifest.map(f => ({
+          path: f.path,
+          content: f.content,
+          size: f.size
+        }));
+      }
 
-      if (!res.ok) throw new Error('Failed to analyze path');
+      const res = await apiClient.post('/api/v1/analyze', requestBody, { headers });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(`Analysis failed: ${errorData.detail || res.statusText}`);
+      }
+
+      addRunLog('Graph construction completed');
+      setRunState('rendering');
+
+      // Step 4: RENDERING HOLOGRAM
+      addRunLog('Initializing 3D visualization...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
       const data = await res.json();
+      addRunLog(`Visualization ready: ${data.nodes.length} nodes, ${data.links.length} connections`);
 
-      // Simulating sequence
-      setTimeout(() => {
-        setGraphData(data);
-        setStatus('ready');
-        toast.success(`Project Loaded: ${data.nodes.length} nodes found`);
-      }, 1500);
+      setGraphData(data);
+      setRunState('ready');
+      setStatus('ready');
+      toast.success(`Project Loaded: ${data.nodes.length} nodes found`);
 
-    } catch (e) {
+    } catch (e: any) {
+      console.error('Run failed:', e);
+      setRunState('failed');
       setStatus('error');
-      toast.error('Path invalid or analysis failed');
-      console.error(e);
+
+      const errorMessage = e.message || 'Unknown error occurred during analysis';
+      setRunError(errorMessage);
+      addRunLog(`ERROR: ${errorMessage}`);
+      toast.error(errorMessage);
     }
   };
 
@@ -110,11 +214,27 @@ export default function Home() {
     setGraphData(null);
     setStatus('idle');
     setSelectedNode(null);
+    setRunState('idle');
+    setRunLogs([]);
+    setRunError('');
   };
 
   return (
     <main className="flex flex-col w-screen h-screen bg-[#05060A] text-white overflow-hidden selection:bg-[#00F0FF] selection:text-black">
       <ToastContainer theme="dark" position="bottom-right" />
+
+      <RunOverlay
+        isVisible={runState !== 'idle' && runState !== 'ready'}
+        currentState={runState}
+        logs={runLogs}
+        error={runError}
+        onCancel={() => {
+          setRunState('idle');
+          setStatus('idle');
+          setRunLogs([]);
+          setRunError('');
+        }}
+      />
 
       {/* 1. Logic Controller Bar */}
       <TopBar
@@ -123,11 +243,17 @@ export default function Home() {
         onRun={handleRun}
         status={status}
         onClear={clearProject}
+        backendOnline={backendOnline}
+        runState={runState}
+        runtimeMode={runtimeMode}
         onBrowse={async () => {
+          console.log('🔍 Browse button clicked');
           if (isTauri()) {
+            console.log('🔍 Using Tauri folder picker');
             const selected = await selectFolder();
             if (selected) setCurrentPath(selected);
           } else {
+            console.log('🔍 Opening web FileExplorerModal');
             // Open Server-Side File Picker
             setShowFileExplorer(true);
           }
@@ -137,11 +263,16 @@ export default function Home() {
       <FileExplorerModal
         isOpen={showFileExplorer}
         onClose={() => setShowFileExplorer(false)}
-        onSelect={(path) => {
+        onSelect={(path, fileManifest) => {
           setCurrentPath(path);
+          if (fileManifest) {
+            setFileManifest(fileManifest);
+            console.log(`Collected ${fileManifest.length} files for web analysis`);
+          }
           setShowFileExplorer(false);
         }}
         initialPath={currentPath}
+        collectFiles={runtimeMode === 'web'}
       />
 
       {/* 2. Tri-Panel Layout (Natalia's Request) */}
@@ -162,10 +293,11 @@ export default function Home() {
 
         {/* Panel B: Center (Stage) */}
         <div className="flex-1 relative bg-black/20 flex flex-col">
-          {/* Layers */}
-          {status === 'scanning' && <RepoLoader />}
 
-          {!graphData && status !== 'scanning' && <NoProjectState />}
+          {/* Layers */}
+          {runState !== 'idle' && runState !== 'ready' && <RepoLoader />}
+
+          {!graphData && status !== 'scanning' && <NoProjectState hasSelectedFolder={!!currentPath} runState={runState} />}
 
           <div className={`w-full h-full transition-opacity duration-1000 ${status === 'scanning' ? 'opacity-0' : 'opacity-100'}`}>
             {/* Only render graph if we have data, but keep div to maintain layout */}

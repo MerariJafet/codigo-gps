@@ -1,5 +1,7 @@
 import { FolderOpen, Play, XCircle } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import StepIndicator from './StepIndicator';
+import { RunState } from './RunOverlay';
 
 interface TopBarProps {
     currentPath: string;
@@ -8,83 +10,123 @@ interface TopBarProps {
     status: string;
     onClear: () => void;
     onBrowse?: () => void;
+    backendOnline?: boolean | null;
+    runState?: string;
+    runtimeMode?: 'web' | 'tauri';
 }
 
-export default function TopBar({ currentPath, onPathChange, onRun, status, onClear, onBrowse }: TopBarProps) {
+export default function TopBar({ currentPath, onPathChange, onRun, status, onClear, onBrowse, backendOnline, runState, runtimeMode }: TopBarProps) {
     const [inputVal, setInputVal] = useState(currentPath);
+
+    // Build ID for debugging - shows current build
+    const BUILD_ID = process.env.NEXT_PUBLIC_BUILD_ID || 'DEV-2026-01-31';
+
+    useEffect(() => {
+        console.log(`🚀 CÓDIGO GPS Build ID: ${BUILD_ID}`);
+    }, []);
+
+    // Sync internal state with prop changes
+    useEffect(() => {
+        setInputVal(currentPath);
+    }, [currentPath]);
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setInputVal(e.target.value);
         onPathChange(e.target.value);
     };
 
+    // Determine step status based on current state
+    const getStepStatus = (stepIndex: number): 'pending' | 'active' | 'completed' => {
+        if (!currentPath) return 'pending';
+        if (runState === 'idle' && stepIndex === 0) return 'completed';
+        if (runState === 'idle' && stepIndex === 1) return 'active';
+        if (['connecting', 'indexing', 'building', 'rendering'].includes(runState || '') && stepIndex === 2) return 'active';
+        if (runState === 'ready' && stepIndex === 3) return 'completed';
+        return stepIndex === 0 ? 'completed' : 'pending';
+    };
+
+    const steps = [
+        { id: 'select', label: 'SELECT PROJECT', status: getStepStatus(0) },
+        { id: 'run', label: 'INITIALIZE RUN', status: getStepStatus(1) },
+        { id: 'analyze', label: 'ANALYSIS', status: getStepStatus(2) },
+        { id: 'visualize', label: 'VISUALIZE', status: getStepStatus(3) },
+    ];
+
     return (
-        <header className="h-24 flex items-center justify-between px-8 border-b border-[#00F0FF]/10 bg-[#05060A]/80 backdrop-blur-md z-40 relative">
+        <header className="h-20 flex flex-col border-b border-[#00F0FF]/10 bg-[#05060A]/90 backdrop-blur-md z-40">
 
-            {/* Logo - Minimal */}
-            <div className="w-1/4">
-                <h1 className="text-lg font-bold tracking-[0.3em] text-transparent bg-clip-text bg-gradient-to-r from-[#00F0FF] to-[#BD00FF] glow-text-cyan flex items-center gap-2">
-                    <span className="w-2 h-2 bg-[#00FF41] rounded-full animate-pulse"></span>
-                    CÓDIGO GPS
-                </h1>
+            {/* Step Indicator - Top */}
+            <div className="flex-1 flex items-center justify-center px-8">
+                <StepIndicator steps={steps} />
             </div>
 
-            {/* Center Control Module */}
-            <div className="flex-1 flex flex-col items-center justify-center gap-2 max-w-xl mx-auto">
+            {/* Main Controls - Bottom */}
+            <div className="flex items-center justify-between px-8 pb-4">
 
-                {/* Connection Label */}
-                <div className="text-[10px] text-gray-500 uppercase tracking-widest mb-1">Target System Interface</div>
+                {/* Left: Title */}
+                <div className="flex-1">
+                    <h1 className="text-sm font-bold tracking-[0.2em] text-transparent bg-clip-text bg-gradient-to-r from-[#00F0FF] to-[#BD00FF]">
+                        TARGET SYSTEM INTERFACE
+                    </h1>
+                </div>
 
-                {/* Input Line */}
-                <div className={`w-[60%] flex items-center gap-2 px-3 py-1 bg-black/40 border-b border-[#00F0FF]/30 transition-all ${status === 'scanning' ? 'opacity-50' : 'hover:border-[#00F0FF]'}`}>
-                    <button
-                        onClick={async () => {
-                            if (onBrowse) {
-                                onBrowse();
-                            }
-                        }}
-                        className="hover:text-[#00F0FF] text-gray-500 transition-colors"
-                        title="Browse Server Files"
-                    >
-                        <FolderOpen size={14} />
-                    </button>
-                    <input
-                        type="text"
-                        value={inputVal}
-                        onChange={handleInputChange}
-                        placeholder="LOAD TARGET SYSTEM..."
-                        className="flex-1 bg-transparent outline-none text-xs font-mono text-[#00F0FF] placeholder-gray-700 text-center uppercase tracking-wider"
-                        disabled={status === 'scanning'}
-                    />
-                    {inputVal && status !== 'scanning' && (
-                        <button onClick={() => { setInputVal(''); onClear(); }} className="text-gray-700 hover:text-red-500">
-                            <XCircle size={12} />
+                {/* Center: Input and RUN */}
+                <div className="flex-1 flex flex-col items-center gap-2 max-w-lg mx-auto">
+
+                    {/* Input Container */}
+                    <div className={`w-full flex items-center gap-2 px-3 py-1.5 bg-black/40 border border-[#00F0FF]/30 rounded transition-all ${status === 'scanning' ? 'opacity-50' : 'hover:border-[#00F0FF]'}`}>
+                        <button
+                            onClick={async () => {
+                                if (onBrowse) {
+                                    onBrowse();
+                                }
+                            }}
+                            className="hover:text-[#00F0FF] text-gray-500 transition-colors"
+                            title="Browse Server Files"
+                        >
+                            <FolderOpen size={14} />
                         </button>
-                    )}
-                </div>
-
-                {/* Glitch Button - Below Input */}
-                <button
-                    onClick={onRun}
-                    disabled={!currentPath || status === 'scanning'}
-                    className={`group relative overflow-hidden px-8 py-1 transition-all duration-300 transform scale-90
-                    ${!currentPath ? 'opacity-30 cursor-not-allowed' : 'hover:scale-[0.95] active:scale-[0.85]'}
-                `}
-                >
-                    <div className={`absolute inset-0 bg-[#00F0FF]/10 skew-x-12 group-hover:bg-[#00F0FF]/20 transition-all border-l border-r border-[#00F0FF]/50 ${status === 'scanning' ? 'animate-pulse' : ''}`}></div>
-                    <div className="relative flex items-center gap-2 text-[#00F0FF] font-bold text-xs tracking-[0.3em] uppercase">
-                        {status === 'scanning' ? 'SCANNING...' : 'INITIALIZE RUN'}
-                        <Play size={10} fill="currentColor" />
+                        <input
+                            type="text"
+                            value={inputVal}
+                            onChange={handleInputChange}
+                            placeholder="SELECT TARGET SYSTEM..."
+                            className="flex-1 bg-transparent outline-none text-xs font-mono text-[#00F0FF] placeholder-gray-700 text-center uppercase tracking-wider"
+                            disabled={status === 'scanning'}
+                        />
+                        {inputVal && status !== 'scanning' && (
+                            <button onClick={() => { setInputVal(''); onClear(); }} className="text-gray-700 hover:text-red-500">
+                                <XCircle size={12} />
+                            </button>
+                        )}
                     </div>
-                </button>
 
-            </div>
+                    {/* RUN Button */}
+                    <button
+                        onClick={onRun}
+                        disabled={status === 'scanning' || !currentPath}
+                        className={`px-6 py-1.5 transition-all duration-300 transform
+                        ${status === 'scanning' ? 'opacity-30 cursor-not-allowed' :
+                          !currentPath ? 'opacity-50 cursor-not-allowed bg-gray-800' :
+                          'hover:scale-[1.02] active:scale-[0.98] bg-[#00F0FF]/10 hover:bg-[#00F0FF]/20'}
+                        border border-[#00F0FF]/50 rounded text-[#00F0FF] font-bold text-xs tracking-[0.2em] uppercase`}
+                    >
+                        {status === 'scanning' ? 'ANALYZING...' : 'INITIALIZE RUN'}
+                    </button>
 
-            {/* Status - Minimal */}
-            <div className="w-1/4 text-right">
-                <div className={`text-[10px] font-mono ${status === 'error' ? 'text-red-500' : 'text-[#00FF41]'}`}>
-                    STATUS: {status.toUpperCase()}
                 </div>
+
+                {/* Right: Status */}
+                <div className="flex-1 text-right">
+                    <div className={`text-[10px] font-mono ${status === 'error' ? 'text-red-500' : 'text-[#00FF41]'}`}>
+                        {backendOnline === null ? 'CHECKING...' :
+                         backendOnline ? 'BACKEND: ONLINE' : 'BACKEND: OFFLINE'}
+                    </div>
+                    <div className="text-[10px] font-mono text-gray-500 mt-1">
+                        {runtimeMode === 'tauri' ? 'DESKTOP MODE (Direct Path)' : 'WEB MODE (Upload)'}
+                    </div>
+                </div>
+
             </div>
 
         </header>
