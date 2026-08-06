@@ -203,15 +203,17 @@ def build_insights(nodes: List[dict], links: List[dict], node_modules: Dict[str,
     label_of = {n["id"]: n["label"] for n in nodes}
 
     # --- Circular dependencies -------------------------------------------------
-    try:
-        cycles = []
-        for cyc in nx.simple_cycles(g):
-            if 2 <= len(cyc) <= 8:
-                cycles.append(cyc)
-            if len(cycles) >= 15:
-                break
-    except Exception:
-        cycles = []
+    # Guard: on very dense graphs cycle enumeration can explode; skip it.
+    cycles = []
+    if len(links) <= 5000:
+        try:
+            for cyc in nx.simple_cycles(g):
+                if 2 <= len(cyc) <= 8:
+                    cycles.append(cyc)
+                if len(cycles) >= 15:
+                    break
+        except Exception:
+            cycles = []
 
     for cyc in cycles:
         edges = [(cyc[i], cyc[(i + 1) % len(cyc)]) for i in range(len(cyc))]
@@ -235,10 +237,14 @@ def build_insights(nodes: List[dict], links: List[dict], node_modules: Dict[str,
     if nodes:
         degrees = sorted((n["metrics"].get("degree", 0) for n in nodes), reverse=True)
         hub_threshold = max(10, degrees[max(0, int(len(degrees) * 0.05) - 1)] if degrees else 10)
-        for n in nodes:
-            deg = n["metrics"].get("degree", 0)
-            cx = n["metrics"].get("complexity", 1)
-            if deg >= hub_threshold and cx >= 15:
+        god_files = [n for n in nodes
+                     if n["metrics"].get("degree", 0) >= hub_threshold
+                     and n["metrics"].get("complexity", 1) >= 15]
+        god_files.sort(key=lambda n: -(n["metrics"].get("degree", 0) * n["metrics"].get("complexity", 1)))
+        if len(god_files) <= 5:
+            for n in god_files:
+                deg = n["metrics"].get("degree", 0)
+                cx = n["metrics"].get("complexity", 1)
                 insights.append({
                     "id": next_id(),
                     "category": "architecture",
@@ -251,6 +257,21 @@ def build_insights(nodes: List[dict], links: List[dict], node_modules: Dict[str,
                     "links": [],
                     "evidence": [],
                 })
+        elif god_files:
+            insights.append({
+                "id": next_id(),
+                "category": "architecture",
+                "severity": "medium",
+                "title": f"{len(god_files)} archivos 'Dios' (muy conectados y complejos)",
+                "explanation": "Los peores: " + ", ".join(n["label"] for n in god_files[:6]) + ".",
+                "why_matters": "Cuando medio proyecto depende de archivos enormes, cualquier cambio ahí puede romper todo lo demás. Son el cuello de botella clásico de mantenimiento.",
+                "recommendation": "Empieza por el primero de la lista: divídelo por responsabilidades y repite con el siguiente.",
+                "nodes": [n["id"] for n in god_files],
+                "links": [],
+                "evidence": [{"file": n["label"], "line": 0,
+                              "snippet": f"{n['metrics'].get('degree', 0)} conexiones · complejidad {n['metrics'].get('complexity', 1)}"}
+                             for n in god_files[:12]],
+            })
 
     # --- Orphan files ----------------------------------------------------------
     orphans = [n for n in nodes
@@ -274,9 +295,11 @@ def build_insights(nodes: List[dict], links: List[dict], node_modules: Dict[str,
         })
 
     # --- Giant files -----------------------------------------------------------
-    for n in nodes:
-        loc = n["metrics"].get("loc", 0)
-        if loc >= 400:
+    giants = [n for n in nodes if n["metrics"].get("loc", 0) >= 400]
+    giants.sort(key=lambda n: -n["metrics"].get("loc", 0))
+    if len(giants) <= 5:
+        for n in giants:
+            loc = n["metrics"].get("loc", 0)
             sev = "high" if loc >= 800 else "medium"
             insights.append({
                 "id": next_id(),
@@ -290,6 +313,22 @@ def build_insights(nodes: List[dict], links: List[dict], node_modules: Dict[str,
                 "links": [],
                 "evidence": [],
             })
+    elif giants:
+        worst = giants[0]["metrics"].get("loc", 0)
+        insights.append({
+            "id": next_id(),
+            "category": "quality",
+            "severity": "high" if worst >= 800 else "medium",
+            "title": f"{len(giants)} archivos gigantes (>400 líneas)",
+            "explanation": "Los más grandes: "
+                           + ", ".join(f"{n['label']} ({n['metrics'].get('loc', 0)})" for n in giants[:6]) + ".",
+            "why_matters": "Los archivos gigantes esconden múltiples responsabilidades. Cuesta encontrarlas, probarlas y revisarlas en un PR; la probabilidad de bug por línea crece con el tamaño.",
+            "recommendation": "Ataca primero los de la lista: busca sus secciones naturales (clases, grupos de funciones) y extráelas a archivos separados.",
+            "nodes": [n["id"] for n in giants],
+            "links": [],
+            "evidence": [{"file": n["label"], "line": 0,
+                          "snippet": f"{n['metrics'].get('loc', 0)} líneas"} for n in giants[:12]],
+        })
 
     # --- Tangled modules (bidirectional coupling) ------------------------------
     mod_edges = defaultdict(int)
@@ -358,10 +397,20 @@ _PENALTY = {"critical": 15, "high": 8, "medium": 3, "low": 1, "info": 0}
 
 
 def compute_health(insights: List[dict], node_count: int) -> dict:
-    score = 100
+    # Diminishing penalty per severity: the first findings weigh full, the
+    # rest weigh sqrt — so huge repos aren't automatically flattened to 5.
+    counts = defaultdict(int)
     for ins in insights:
-        score -= _PENALTY.get(ins["severity"], 0)
-    score = max(5, min(100, score))
+        counts[ins["severity"]] += 1
+    score = 100.0
+    for sev, c in counts.items():
+        w = _PENALTY.get(sev, 0)
+        if w == 0 or c == 0:
+            continue
+        full = min(c, 3)
+        rest = c - full
+        score -= w * (full + rest ** 0.5)
+    score = int(max(5, min(100, round(score))))
     if score >= 90:
         grade, verdict = "A", "Proyecto sano. Sigue así."
     elif score >= 75:
@@ -372,9 +421,6 @@ def compute_health(insights: List[dict], node_count: int) -> dict:
         grade, verdict = "D", "Riesgo alto: hay problemas estructurales o de seguridad."
     else:
         grade, verdict = "F", "Crítico: atiende los hallazgos de seguridad de inmediato."
-    counts = defaultdict(int)
-    for ins in insights:
-        counts[ins["severity"]] += 1
     return {
         "score": score,
         "grade": grade,

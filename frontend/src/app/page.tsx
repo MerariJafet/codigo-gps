@@ -55,7 +55,6 @@ export default function Home() {
 
   // Runtime mode detection
   const [runtimeMode, setRuntimeMode] = useState<'web' | 'tauri'>('web');
-  const [fileManifest, setFileManifest] = useState<any[]>([]);
 
   // Run sequence state
   const [runState, setRunState] = useState<RunState>('idle');
@@ -152,17 +151,9 @@ export default function Home() {
       const headers: any = { 'Content-Type': 'application/json' };
       if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
 
-      const requestBody: any = { options: {} };
-      if (runtimeMode === 'tauri' || fileManifest.length === 0) {
-        // Desktop mode, or web mode with a typed local path (local backend reads it directly)
-        requestBody.repo_path = currentPath;
-      } else {
-        requestBody.file_manifest = fileManifest.map(f => ({
-          path: f.path,
-          content: f.content,
-          size: f.size
-        }));
-      }
+      // The local backend reads the path directly from disk — no upload,
+      // so project size doesn't matter.
+      const requestBody: any = { options: {}, repo_path: currentPath };
 
       const res = await apiClient.post('/api/v1/analyze', requestBody, { headers });
 
@@ -272,13 +263,11 @@ export default function Home() {
       <FileExplorerModal
         isOpen={showFileExplorer}
         onClose={() => setShowFileExplorer(false)}
-        onSelect={(path, manifest) => {
+        onSelect={(path) => {
           setCurrentPath(path);
-          if (manifest) setFileManifest(manifest);
           setShowFileExplorer(false);
         }}
         initialPath={currentPath}
-        collectFiles={runtimeMode === 'web'}
       />
 
       {/* 2. Tri-Panel Layout */}
