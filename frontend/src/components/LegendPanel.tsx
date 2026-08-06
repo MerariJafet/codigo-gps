@@ -1,38 +1,20 @@
-import { GRAPH_COLORS } from './GraphConfig';
-
 interface LegendPanelProps {
-    folderStats?: { path: string, count: number, color: string }[];
+    folderStats?: { id?: string; path: string, count: number, color: string }[];
     onFolderHover?: (folder: string | null) => void;
 }
 
 export default function LegendPanel({ folderStats, onFolderHover }: LegendPanelProps) {
     return (
-        <div className="absolute bottom-6 left-6 p-4 glass-panel rounded-lg border border-white/10 bg-[#05060A]/80 backdrop-blur z-30 max-w-[240px] max-h-[60vh] overflow-y-auto custom-scrollbar">
-            <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 border-b border-white/10 pb-1">Architecture Layers</h3>
-            <div className="space-y-2 mb-4">
-                <LegendItem color={GRAPH_COLORS.backend} label="Backend" desc="Server Logic & API" />
-                <LegendItem color={GRAPH_COLORS.frontend} label="Frontend" desc="UI Components" />
-                <LegendItem color={GRAPH_COLORS.shared} label="Shared / Core" desc="Common Utilities" />
-                <LegendItem color={GRAPH_COLORS.config} label="Config" desc="Infrastructure" />
-                <LegendItem color={GRAPH_COLORS.test} label="Tests" desc="Unit/Integration Tests" />
-            </div>
-
-            <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 border-b border-white/10 pb-1">Educational Roles</h3>
-            <div className="space-y-2 mb-4">
-                <RoleItem type="entrypoint" label="Entry Point" desc="System Start" />
-                <RoleItem type="hub" label="Core Hub" desc="Highly Connected" />
-                <RoleItem type="orphan" label="Orphan" desc="No Connections" />
-            </div>
-
+        <div className="absolute bottom-6 left-6 p-4 glass-panel rounded-lg border border-white/10 bg-[#05060A]/80 backdrop-blur z-10 max-w-[250px] max-h-[55vh] overflow-y-auto custom-scrollbar">
             {folderStats && folderStats.length > 0 && (
                 <>
-                    <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 border-b border-white/10 pb-1">Folder Nebulas</h3>
-                    <div className="space-y-2">
-                        {folderStats.slice(0, 8).map((stat) => (
+                    <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 border-b border-white/10 pb-1">Módulos / Regiones</h3>
+                    <div className="space-y-2 mb-4">
+                        {folderStats.slice(0, 10).map((stat) => (
                             <div
-                                key={stat.path}
+                                key={stat.id || stat.path}
                                 className="flex items-center gap-3 group cursor-pointer hover:bg-white/5 p-1 rounded transition-colors"
-                                onMouseEnter={() => onFolderHover && onFolderHover(stat.path)}
+                                onMouseEnter={() => onFolderHover && onFolderHover(stat.id || stat.path)}
                                 onMouseLeave={() => onFolderHover && onFolderHover(null)}
                             >
                                 <div
@@ -43,14 +25,24 @@ export default function LegendPanel({ folderStats, onFolderHover }: LegendPanelP
                                     }}
                                 />
                                 <div className="flex flex-col">
-                                    <span className="text-xs font-bold text-gray-200 truncate max-w-[140px]">{stat.path}</span>
-                                    <span className="text-[10px] text-gray-500">{stat.count} files</span>
+                                    <span className="text-xs font-bold text-gray-200 truncate max-w-[150px]">{stat.path}</span>
+                                    <span className="text-[10px] text-gray-500">{stat.count} archivos</span>
                                 </div>
                             </div>
                         ))}
                     </div>
                 </>
             )}
+
+            <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 border-b border-white/10 pb-1">Cómo leerlo</h3>
+            <div className="space-y-2">
+                <LegendItem color="#ffffff" label="Nodo = archivo" desc="El tamaño crece con sus conexiones" />
+                <LegendItem color="#37FFB0" label="Línea = import" desc="Las partículas viajan hacia la dependencia" />
+                <LegendItem color="#FF2E63" label="Línea roja = problema" desc="Ciclo, vulnerabilidad o hallazgo señalado" />
+                <RoleItem type="entrypoint" label="Punto de entrada" desc="Donde arranca el sistema" />
+                <RoleItem type="hub" label="Hub central" desc="Muy conectado: cuidado al tocarlo" />
+                <RoleItem type="orphan" label="Huérfano" desc="Nadie lo importa" />
+            </div>
         </div>
     );
 }
@@ -58,9 +50,10 @@ export default function LegendPanel({ folderStats, onFolderHover }: LegendPanelP
 function LegendItem({ color, label, desc }: any) {
     return (
         <div className="flex items-center gap-3 group cursor-help" title={desc}>
-            <div className="w-3 h-3 rounded-full shadow-[0_0_8px_currentColor]" style={{ backgroundColor: color, color: color }} />
+            <div className="w-3 h-3 rounded-full shadow-[0_0_8px_currentColor] shrink-0" style={{ backgroundColor: color, color: color }} />
             <div>
                 <div className="text-xs font-bold text-gray-300">{label}</div>
+                <div className="text-[10px] text-gray-500">{desc}</div>
             </div>
         </div>
     );
@@ -69,12 +62,15 @@ function LegendItem({ color, label, desc }: any) {
 function RoleItem({ type, label, desc }: any) {
     return (
         <div className="flex items-center gap-3 group cursor-help" title={desc}>
-            <div className={`w-3 h-3 rounded-full bg-gray-500 border-2
+            <div className={`w-3 h-3 rounded-full bg-gray-500 border-2 shrink-0
                 ${type === 'entrypoint' ? 'border-white shadow-[0_0_10px_white]' : ''}
                 ${type === 'hub' ? 'border-[#FFF176] shadow-[0_0_5px_#FFF176]' : ''}
                 ${type === 'orphan' ? 'border-none opacity-40 bg-[#37474F]' : ''}
             `} />
-            <div className="text-xs font-bold text-gray-300">{label}</div>
+            <div>
+                <div className="text-xs font-bold text-gray-300">{label}</div>
+                <div className="text-[10px] text-gray-500">{desc}</div>
+            </div>
         </div>
     );
 }

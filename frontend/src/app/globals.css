@@ -1,6 +1,4 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
 :root {
   /* Natalia's V3 Palette */
@@ -81,15 +79,18 @@ body {
     }
   }
 
-  .cyber-scrollbar::-webkit-scrollbar {
+  .cyber-scrollbar::-webkit-scrollbar,
+  .custom-scrollbar::-webkit-scrollbar {
     width: 4px;
   }
 
-  .cyber-scrollbar::-webkit-scrollbar-track {
+  .cyber-scrollbar::-webkit-scrollbar-track,
+  .custom-scrollbar::-webkit-scrollbar-track {
     background: transparent;
   }
 
-  .cyber-scrollbar::-webkit-scrollbar-thumb {
+  .cyber-scrollbar::-webkit-scrollbar-thumb,
+  .custom-scrollbar::-webkit-scrollbar-thumb {
     background: var(--neon-cyan);
     border-radius: 2px;
   }

@@ -28,15 +28,21 @@ class NodeSchema(BaseModel):
     metrics: MetricsSchema
     classification: ClassificationSchema
     folders: FolderInfoSchema
+    module: str = ""
 
 class LinkSchema(BaseModel):
     source: str
     target: str
     relation: str
+    flags: List[str] = []
 
 class GraphSchema(BaseModel):
     nodes: List[NodeSchema]
     links: List[LinkSchema]
+    modules: List[Any] = []
+    module_links: List[Any] = []
+    insights: List[Any] = []
+    summary: Any = {}
 
     class Config:
         json_schema_extra = {
