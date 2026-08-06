@@ -136,6 +136,15 @@ export default function GraphViz({ data, onNodeClick, performanceMode, onStatsUp
         });
     }, [data, moduleCenters]);
 
+    // Files that many others depend on: links flowing INTO them are "essential"
+    const hubSet = useMemo(() => {
+        const s = new Set<string>();
+        data?.nodes?.forEach((n) => {
+            if ((n.metrics?.in_degree || 0) >= 4 || n.classification?.role === 'core_hub') s.add(n.id);
+        });
+        return s;
+    }, [data]);
+
     // Sets for insight highlighting (red lines / red nodes)
     const highlightNodeSet = useMemo(
         () => new Set(highlightInsight?.nodes || []),
@@ -220,13 +229,14 @@ export default function GraphViz({ data, onNodeClick, performanceMode, onStatsUp
 
         const group = new THREE.Group();
         const detail = performanceMode === 'balanced' ? 8 : 16;
+        const isOrphan = node.classification?.role === 'orphan';
         const geometry = new THREE.SphereGeometry(size, detail, detail);
         const material = new THREE.MeshLambertMaterial({
             color,
             transparent: true,
-            opacity: highlightInsight && !isDanger && !isSelected ? 0.35 : 0.9,
+            opacity: highlightInsight && !isDanger && !isSelected ? 0.35 : (isOrphan ? 0.4 : 0.9),
             emissive: color,
-            emissiveIntensity: isSelected || isDanger ? 0.9 : 0.5,
+            emissiveIntensity: isSelected || isDanger ? 0.9 : (isOrphan ? 0.15 : 0.5),
         });
         group.add(new THREE.Mesh(geometry, material));
 
@@ -359,43 +369,90 @@ export default function GraphViz({ data, onNodeClick, performanceMode, onStatsUp
     const linkKey = (link: any) => `${endId(link.source)}|${endId(link.target)}`;
     const isDangerLink = useCallback((link: any) => {
         if (highlightInsight) return highlightLinkSet.has(linkKey(link));
-        return (link.flags || []).includes('cycle');
+        return (link.flags || []).includes('cycle') || (link.flags || []).includes('tangle');
     }, [highlightInsight, highlightLinkSet]);
 
-    const getLinkWidth = (link: any) => {
-        if (isDangerLink(link)) return 2.6;
-        if (selectedNodeId) return isLinkRelatedToSelection(link) ? 2.2 : 0.5;
-        return performanceMode === 'high-performance' ? 0.9 : 1.8;
+    // Link taxonomy:
+    //   danger    (red)    — cycle/tangle or part of the highlighted finding
+    //   bridge    (amber)  — crosses module boundaries (referential)
+    //   essential (green)  — feeds a hub file many others depend on
+    //   internal  (module) — normal import inside its module
+    type LinkCategory = 'danger' | 'bridge' | 'essential' | 'internal';
+    const linkCategory = useCallback((link: any): LinkCategory => {
+        if (isDangerLink(link)) return 'danger';
+        if ((link.flags || []).includes('cross_module')) return 'bridge';
+        if (hubSet.has(endId(link.target))) return 'essential';
+        return 'internal';
+    }, [isDangerLink, hubSet]);
+
+    const CATEGORY_NAMES: Record<LinkCategory, string> = {
+        danger: 'CRÍTICA — ciclo o hallazgo',
+        bridge: 'PUENTE entre módulos',
+        essential: 'ESENCIAL — alimenta un hub',
+        internal: 'interna del módulo',
     };
+    const BRIDGE_COLOR = '#FFD54F';
+    const ESSENTIAL_COLOR = '#37FFB0';
 
     const hexToRgba = (hex: string, alpha: number) => {
         const n = parseInt(hex.slice(1), 16);
         return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
     };
 
+    const getLinkWidth = (link: any) => {
+        const cat = linkCategory(link);
+        if (cat === 'danger') return 2.8;
+        if (selectedNodeId) return isLinkRelatedToSelection(link) ? 2.4 : 0.5;
+        if (highlightInsight) return 0.5;
+        if (cat === 'bridge') return 2.4;
+        if (cat === 'essential') return 2.0;
+        return performanceMode === 'high-performance' ? 0.9 : 1.6;
+    };
+
     const getLinkColor = (link: any) => {
-        if (isDangerLink(link)) return DANGER_COLOR;
+        const cat = linkCategory(link);
+        if (cat === 'danger') return DANGER_COLOR;
         if (highlightInsight) return 'rgba(60, 70, 85, 0.12)';
         if (selectedNodeId) {
             if (isLinkRelatedToSelection(link)) return 'rgba(0, 255, 127, 1.0)';
             return 'rgba(68, 68, 68, 0.1)';
         }
-        // Tint each link with its source module color so connections read
-        // clearly inside a region; cross-module links stay white.
+        if (cat === 'bridge') return hexToRgba(BRIDGE_COLOR, 0.9);
+        if (cat === 'essential') return hexToRgba(ESSENTIAL_COLOR, 0.85);
         const src: any = typeof link.source === 'object' ? link.source : null;
-        const tgt: any = typeof link.target === 'object' ? link.target : null;
-        if (groupByModule && src && tgt && src.module === tgt.module && moduleColor.has(src.module)) {
-            return hexToRgba(moduleColor.get(src.module)!, 0.85);
+        if (groupByModule && src && moduleColor.has(src.module)) {
+            return hexToRgba(moduleColor.get(src.module)!, 0.8);
         }
         return 'rgba(255, 255, 255, 0.55)';
     };
 
     const getParticleCount = (link: any) => {
-        if (isDangerLink(link)) return 3;
+        const cat = linkCategory(link);
+        if (cat === 'danger') return 3;
+        if (cat === 'bridge') return 2;
+        if (cat === 'essential') return 3;
         if (performanceMode === 'high-performance') return 0;
         return performanceMode === 'balanced' ? 1 : 2;
     };
+    const getParticleColor = (link: any) => {
+        const cat = linkCategory(link);
+        if (cat === 'danger') return DANGER_COLOR;
+        if (cat === 'bridge') return BRIDGE_COLOR;
+        return ESSENTIAL_COLOR;
+    };
     const getLinkResolution = () => (performanceMode === 'high-performance' ? 3 : 6);
+
+    // Hover tooltip: which file connects to which, and what kind of link it is
+    const getLinkLabel = (link: any) => {
+        const src: any = typeof link.source === 'object' ? link.source : { label: link.source };
+        const tgt: any = typeof link.target === 'object' ? link.target : { label: link.target };
+        const cat = linkCategory(link);
+        const color = cat === 'danger' ? DANGER_COLOR : cat === 'bridge' ? BRIDGE_COLOR : cat === 'essential' ? ESSENTIAL_COLOR : '#9fb3c8';
+        return `<div style="background:#05060Aee;border:1px solid ${color};border-radius:8px;padding:6px 10px;font-size:11px;color:#e0e6ed">
+            <b>${src.label}</b> → <b>${tgt.label}</b><br/>
+            <span style="color:${color};font-weight:700;font-size:10px">${CATEGORY_NAMES[cat]}</span>
+        </div>`;
+    };
 
     if (typeof window === 'undefined') return null;
 
@@ -433,9 +490,10 @@ export default function GraphViz({ data, onNodeClick, performanceMode, onStatsUp
                     linkWidth={getLinkWidth}
                     linkResolution={getLinkResolution()}
                     linkDirectionalParticles={getParticleCount}
-                    linkDirectionalParticleWidth={2}
-                    linkDirectionalParticleColor={(link: any) => (isDangerLink(link) ? DANGER_COLOR : '#37FFB0')}
+                    linkDirectionalParticleWidth={2.2}
+                    linkDirectionalParticleColor={getParticleColor}
                     linkDirectionalParticleSpeed={0.005}
+                    linkLabel={getLinkLabel}
                     backgroundColor="#00000000"
                     showNavInfo={false}
                     linkColor={getLinkColor}

@@ -1,4 +1,5 @@
-import { ArrowRight, Boxes, Link2, FileCode } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { ArrowRight, Boxes, Link2, FileCode, ChevronDown } from 'lucide-react';
 import { GraphData } from '../types';
 
 interface ModulesViewProps {
@@ -7,9 +8,29 @@ interface ModulesViewProps {
     onSelectNode: (id: string) => void;
 }
 
+const endId = (x: any): string => (typeof x === 'object' && x !== null ? x.id : x);
+
 export default function ModulesView({ data, onExploreModule, onSelectNode }: ModulesViewProps) {
     const modules = data.modules || [];
     const moduleLinks = data.module_links || [];
+    const [openPair, setOpenPair] = useState<string | null>(null);
+
+    const nodeById = useMemo(() => {
+        const m = new Map<string, any>();
+        data.nodes.forEach(n => m.set(n.id, n));
+        return m;
+    }, [data]);
+
+    // Actual file→file links behind a module→module relation
+    const bridgeFiles = (srcMod: string, tgtMod: string) =>
+        data.links.filter(l => {
+            const s = nodeById.get(endId(l.source));
+            const t = nodeById.get(endId(l.target));
+            return s?.module === srcMod && t?.module === tgtMod;
+        }).map(l => ({
+            source: nodeById.get(endId(l.source)),
+            target: nodeById.get(endId(l.target)),
+        }));
 
     return (
         <div className="absolute inset-0 z-20 overflow-y-auto custom-scrollbar bg-[#05060A]/95 backdrop-blur px-8 pb-8 pt-20">
@@ -24,22 +45,62 @@ export default function ModulesView({ data, onExploreModule, onSelectNode }: Mod
                     </p>
                 </div>
 
-                {/* Module relations strip */}
+                {/* Module relations strip — click a chip to see which files bridge */}
                 {moduleLinks.length > 0 && (
-                    <div className="flex flex-wrap gap-2 my-6">
-                        {moduleLinks.slice(0, 10).map((ml) => {
-                            const src = modules.find(m => m.id === ml.source);
-                            const tgt = modules.find(m => m.id === ml.target);
+                    <div className="my-6">
+                        <div className="text-[10px] text-gray-500 uppercase tracking-widest mb-2">
+                            Puentes entre módulos · haz clic para ver qué archivos conectan
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                            {moduleLinks.slice(0, 12).map((ml) => {
+                                const key = `${ml.source}->${ml.target}`;
+                                const src = modules.find(m => m.id === ml.source);
+                                const tgt = modules.find(m => m.id === ml.target);
+                                const isOpen = openPair === key;
+                                return (
+                                    <button key={key}
+                                        onClick={() => setOpenPair(isOpen ? null : key)}
+                                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs transition-all
+                                            ${isOpen ? 'bg-[#FFD54F]/15 border-[#FFD54F]/60' : 'bg-white/[0.04] border-white/10 hover:border-[#FFD54F]/40'}`}>
+                                        <span style={{ color: src?.color }} className="font-bold">{ml.source}</span>
+                                        <ArrowRight size={12} className="text-[#FFD54F]" />
+                                        <span style={{ color: tgt?.color }} className="font-bold">{ml.target}</span>
+                                        <span className="text-gray-500 font-mono ml-1">×{ml.count}</span>
+                                        <ChevronDown size={11} className={`text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        {openPair && (() => {
+                            const [srcMod, tgtMod] = openPair.split('->');
+                            const files = bridgeFiles(srcMod, tgtMod);
                             return (
-                                <div key={`${ml.source}->${ml.target}`}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.04] border border-white/10 text-xs">
-                                    <span style={{ color: src?.color }} className="font-bold">{ml.source}</span>
-                                    <ArrowRight size={12} className="text-gray-500" />
-                                    <span style={{ color: tgt?.color }} className="font-bold">{ml.target}</span>
-                                    <span className="text-gray-500 font-mono ml-1">×{ml.count}</span>
+                                <div className="mt-3 glass-panel rounded-xl border border-[#FFD54F]/25 p-4">
+                                    <div className="text-[10px] text-[#FFD54F] uppercase tracking-widest mb-2 font-bold">
+                                        Archivos que hacen el puente {srcMod} → {tgtMod}
+                                    </div>
+                                    <div className="space-y-1">
+                                        {files.slice(0, 20).map((f, i) => (
+                                            <div key={i} className="flex items-center gap-2 text-[11px] font-mono flex-wrap">
+                                                <button onClick={() => f.source && onSelectNode(f.source.id)}
+                                                    className="text-gray-200 hover:text-[#00F0FF] transition-colors truncate max-w-[45%]">
+                                                    {f.source?.label}
+                                                </button>
+                                                <ArrowRight size={11} className="text-[#FFD54F] shrink-0" />
+                                                <button onClick={() => f.target && onSelectNode(f.target.id)}
+                                                    className="text-gray-200 hover:text-[#00F0FF] transition-colors truncate max-w-[45%]">
+                                                    {f.target?.label}
+                                                </button>
+                                            </div>
+                                        ))}
+                                        {files.length > 20 && (
+                                            <div className="text-[10px] text-gray-500">…y {files.length - 20} más</div>
+                                        )}
+                                    </div>
                                 </div>
                             );
-                        })}
+                        })()}
                     </div>
                 )}
 
