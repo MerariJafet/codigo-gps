@@ -268,10 +268,10 @@ export default function GraphViz({ data, onNodeClick, performanceMode, onStatsUp
                 (typeof l.source === 'object' ? l.source.module : null) ===
                 (typeof l.target === 'object' ? l.target.module : null);
             if (grouped) {
-                linkForce.distance((l: any) => (sameModule(l) ? 28 : 260));
+                linkForce.distance((l: any) => (sameModule(l) ? 50 : 260));
                 linkForce.strength((l: any) => (sameModule(l) ? 0.5 : 0.015));
             } else {
-                linkForce.distance(30);
+                linkForce.distance(45);
                 linkForce.strength(0.3);
             }
         }
@@ -364,8 +364,13 @@ export default function GraphViz({ data, onNodeClick, performanceMode, onStatsUp
 
     const getLinkWidth = (link: any) => {
         if (isDangerLink(link)) return 2.6;
-        if (selectedNodeId) return isLinkRelatedToSelection(link) ? 2.0 : 0.4;
-        return performanceMode === 'high-performance' ? 0.2 : 0.5;
+        if (selectedNodeId) return isLinkRelatedToSelection(link) ? 2.2 : 0.5;
+        return performanceMode === 'high-performance' ? 0.9 : 1.8;
+    };
+
+    const hexToRgba = (hex: string, alpha: number) => {
+        const n = parseInt(hex.slice(1), 16);
+        return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
     };
 
     const getLinkColor = (link: any) => {
@@ -375,8 +380,14 @@ export default function GraphViz({ data, onNodeClick, performanceMode, onStatsUp
             if (isLinkRelatedToSelection(link)) return 'rgba(0, 255, 127, 1.0)';
             return 'rgba(68, 68, 68, 0.1)';
         }
-        const opacity = performanceMode === 'high-performance' ? 0.2 : 0.3;
-        return `rgba(255, 255, 255, ${opacity})`;
+        // Tint each link with its source module color so connections read
+        // clearly inside a region; cross-module links stay white.
+        const src: any = typeof link.source === 'object' ? link.source : null;
+        const tgt: any = typeof link.target === 'object' ? link.target : null;
+        if (groupByModule && src && tgt && src.module === tgt.module && moduleColor.has(src.module)) {
+            return hexToRgba(moduleColor.get(src.module)!, 0.85);
+        }
+        return 'rgba(255, 255, 255, 0.55)';
     };
 
     const getParticleCount = (link: any) => {
