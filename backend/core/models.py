@@ -1,5 +1,5 @@
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Dict, Optional
 
 @dataclass
@@ -32,14 +32,20 @@ class Node:
     metrics: Metrics
     classification: Classification
     folders: FolderInfo
+    module: str = ""  # módulo/bloque lógico asignado (ej: "backend/core")
 
 @dataclass
 class Link:
     source: str
     target: str
     relation: str     # "imports"
+    flags: list[str] = field(default_factory=list)  # "cycle" | "tangle" | "cross_module"
 
 @dataclass
 class Graph:
     nodes: list[Node]
     links: list[Link]
+    modules: list[dict] = field(default_factory=list)
+    module_links: list[dict] = field(default_factory=list)
+    insights: list[dict] = field(default_factory=list)
+    summary: dict = field(default_factory=dict)

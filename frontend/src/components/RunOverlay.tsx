@@ -27,21 +27,12 @@ const RUN_STEPS: RunStep[] = [
 
 export default function RunOverlay({ isVisible, currentState, onCancel, logs, error }: RunOverlayProps) {
     const [showLogs, setShowLogs] = useState(false);
-    const [progress, setProgress] = useState(0);
 
-    useEffect(() => {
-        if (!isVisible) {
-            setProgress(0);
-            return;
-        }
-
-        const currentStepIndex = RUN_STEPS.findIndex(step => step.id === currentState);
-        if (currentStepIndex >= 0) {
-            const totalSteps = RUN_STEPS.length;
-            const baseProgress = (currentStepIndex / totalSteps) * 100;
-            setProgress(baseProgress);
-        }
-    }, [currentState, isVisible]);
+    // Derived, not state: avoids setState-in-effect cascading renders
+    const currentStepIndex = RUN_STEPS.findIndex(step => step.id === currentState);
+    const progress = !isVisible || currentStepIndex < 0
+        ? 0
+        : (currentStepIndex / RUN_STEPS.length) * 100;
 
     if (!isVisible) return null;
 

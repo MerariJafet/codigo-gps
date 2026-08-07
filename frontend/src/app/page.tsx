@@ -12,13 +12,19 @@ import RepoLoader from '@/components/RepoLoader';
 import NoProjectState from '@/components/NoProjectState';
 import PerformancePanel, { PerformanceMode } from '@/components/PerformancePanel';
 import { getTauriToken, isTauri, selectFolder } from '@/lib/tauri';
-import LegendPanel from '@/components/LegendPanel';
-import FileExplorerModal from '@/components/FileExplorerModal';
+import FileExplorerModal, { ManifestEntry } from '@/components/FileExplorerModal';
 import { apiClient } from '@/lib/apiClient';
 import RunOverlay, { RunState } from '@/components/RunOverlay';
+import ViewTabs, { ViewMode } from '@/components/ViewTabs';
+import DashboardView from '@/components/DashboardView';
+import ModulesView from '@/components/ModulesView';
+import MentorView from '@/components/MentorView';
+import TourGuide from '@/components/TourGuide';
+import { ZoomIn, GraduationCap, Move3d } from 'lucide-react';
+import { GraphData, Insight, Node } from '@/types';
 
 // Import GraphViz dynamically to avoid SSR hydration issues
-const GraphViz = dynamic(() => import('@/components/GraphViz'), { 
+const GraphViz = dynamic(() => import('@/components/GraphViz'), {
   ssr: false,
   loading: () => (
     <div className="w-full h-full flex items-center justify-center bg-black/20">
@@ -33,20 +39,30 @@ const GraphViz = dynamic(() => import('@/components/GraphViz'), {
 export default function Home() {
   const [currentPath, setCurrentPath] = useState('');
   const [authToken, setAuthToken] = useState<string | null>(null);
-  const [graphData, setGraphData] = useState<any>(null);
-  const [selectedNode, setSelectedNode] = useState<any>(null);
+  const [graphData, setGraphData] = useState<GraphData | null>(null);
+  const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [status, setStatus] = useState<'idle' | 'scanning' | 'ready' | 'error'>('idle');
   const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
 
   const [perfMode, setPerfMode] = useState<PerformanceMode>('balanced');
   const [perfStats, setPerfStats] = useState({ fps: 60, nodeCount: 0, linkCount: 0 });
-  const [groupByFolder, setGroupByFolder] = useState(false);
+  const [groupByModule, setGroupByModule] = useState(true);
+
+  // New: view system + insight highlighting + module focus
+  const [viewMode, setViewMode] = useState<ViewMode>('graph');
+  const [highlightInsight, setHighlightInsight] = useState<Insight | null>(null);
+  const [focusModule, setFocusModule] = useState<string | null>(null);
+  const [zoomMode, setZoomMode] = useState(false);
+  const [moveModuleMode, setMoveModuleMode] = useState(false);
+  const [learnOpen, setLearnOpen] = useState(false);
 
   const [showFileExplorer, setShowFileExplorer] = useState(false);
+  // Browser-upload manifest: used when the backend cannot see the user's
+  // filesystem (Docker / remote). Empty → analyze by absolute repo_path.
+  const [fileManifest, setFileManifest] = useState<ManifestEntry[]>([]);
 
   // Runtime mode detection
   const [runtimeMode, setRuntimeMode] = useState<'web' | 'tauri'>('web');
-  const [fileManifest, setFileManifest] = useState<any[]>([]);
 
   // Run sequence state
   const [runState, setRunState] = useState<RunState>('idle');
@@ -54,38 +70,27 @@ export default function Home() {
   const [runError, setRunError] = useState<string>('');
 
   useEffect(() => {
-    // Initialize Auth
     const initAuth = async () => {
       const token = await getTauriToken();
-      if (token) {
-        setAuthToken(token);
-        console.log("Auth Token Loaded from Tauri");
-      }
+      if (token) setAuthToken(token);
     };
     initAuth();
 
-    // Detect runtime mode
     const mode = isTauri() ? 'tauri' : 'web';
     setRuntimeMode(mode);
-    console.log(`Runtime mode: ${mode.toUpperCase()}`);
 
-    // Initial backend status check
     checkBackendStatus();
 
-    // Check for graph_id in URL params if we are in service mode
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const graphId = params.get('graph_id');
-      if (graphId) {
-        loadFromGraphId(graphId);
-      }
+      if (graphId) loadFromGraphId(graphId);
     }
   }, []);
 
   const loadFromGraphId = async (id: string) => {
     setStatus('scanning');
     try {
-      // Adjust valid endpoint
       const headers: any = {};
       if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
 
@@ -95,10 +100,10 @@ export default function Home() {
       const data = await res.json();
       setGraphData(data);
       setStatus('ready');
-      toast.success('Services: External Analysis Loaded');
+      toast.success('Análisis externo cargado');
     } catch (e) {
       setStatus('error');
-      toast.error('Failed to load external graph');
+      toast.error('No se pudo cargar el grafo externo');
       console.error(e);
     }
   };
@@ -119,91 +124,80 @@ export default function Home() {
   };
 
   const handleRun = async () => {
-    // Explicit validation: RUN requires a valid project path
     if (!currentPath || currentPath.trim() === '') {
-      const errorMsg = 'No project path selected. Please select a folder first.';
+      const errorMsg = 'Selecciona primero la carpeta del proyecto.';
       setRunError(errorMsg);
       addRunLog(`ERROR: ${errorMsg}`);
       toast.error(errorMsg);
       return;
     }
 
-    addRunLog(`Starting analysis for project: ${currentPath}`);
-
     // Reset run state
     setRunState('connecting');
     setRunLogs([]);
     setRunError('');
     setGraphData(null);
+    setHighlightInsight(null);
+    setFocusModule(null);
+    setViewMode('graph');
     setStatus('scanning');
+    addRunLog(`Iniciando análisis de: ${currentPath}`);
 
     try {
-      // Step 1: CONNECTING BACKEND
-      addRunLog('Initiating backend connection...');
+      addRunLog('Conectando con el backend...');
       const backendAvailable = await checkBackendStatus();
-
       if (!backendAvailable) {
-        throw new Error('Backend service is offline. Please start the backend service and try again.');
+        throw new Error('El backend está apagado. Inícialo e intenta de nuevo.');
       }
 
-      addRunLog('Backend connection established');
+      addRunLog('Conexión establecida');
       setRunState('indexing');
-
-      // Step 2: INDEXING FILES (simulated)
-      addRunLog('Scanning project directory...');
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      addRunLog(`Found project files in: ${currentPath}`);
-
+      addRunLog('Escaneando el proyecto...');
       setRunState('building');
-
-      // Step 3: BUILDING GRAPH
-      addRunLog('Analyzing file dependencies...');
-      addRunLog(`API Base URL: ${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'}`);
-      addRunLog(`Analysis endpoint: /api/v1/analyze`);
+      addRunLog('Analizando dependencias, módulos y vulnerabilidades...');
 
       const headers: any = { 'Content-Type': 'application/json' };
       if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
 
-      let requestBody: any = { options: {} };
-      if (runtimeMode === 'tauri') {
-        requestBody.repo_path = currentPath;
+      // Preferred: the local backend reads the path directly from disk (no
+      // upload, no size limit). Fallback: browser-collected manifest for
+      // setups where the backend can't see the user's filesystem.
+      const requestBody: any = { options: {} };
+      if (fileManifest.length > 0) {
+        requestBody.file_manifest = fileManifest;
       } else {
-        // Web mode: send file manifest
-        requestBody.file_manifest = fileManifest.map(f => ({
-          path: f.path,
-          content: f.content,
-          size: f.size
-        }));
+        requestBody.repo_path = currentPath;
       }
 
       const res = await apiClient.post('/api/v1/analyze', requestBody, { headers });
 
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
-        throw new Error(`Analysis failed: ${errorData.detail || res.statusText}`);
+        throw new Error(`El análisis falló: ${errorData.detail || errorData.error || res.statusText}`);
       }
 
-      addRunLog('Graph construction completed');
+      addRunLog('Grafo construido');
       setRunState('rendering');
+      addRunLog('Inicializando holograma 3D...');
 
-      // Step 4: RENDERING HOLOGRAM
-      addRunLog('Initializing 3D visualization...');
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      const data = await res.json();
-      addRunLog(`Visualization ready: ${data.nodes.length} nodes, ${data.links.length} connections`);
+      const data: GraphData = await res.json();
+      const insightCount = data.insights?.length || 0;
+      addRunLog(`Listo: ${data.nodes.length} archivos, ${data.links.length} conexiones, ${data.modules?.length || 0} módulos, ${insightCount} hallazgos`);
 
       setGraphData(data);
       setRunState('ready');
       setStatus('ready');
-      toast.success(`Project Loaded: ${data.nodes.length} nodes found`);
+      toast.success(`Proyecto cargado: ${data.nodes.length} archivos en ${data.modules?.length || 0} módulos`);
+      if (insightCount > 0) {
+        toast.warn(`El Maestro encontró ${insightCount} hallazgos para enseñarte`);
+      }
 
     } catch (e: any) {
       console.error('Run failed:', e);
       setRunState('failed');
       setStatus('error');
 
-      const errorMessage = e.message || 'Unknown error occurred during analysis';
+      const errorMessage = e.message || 'Error desconocido durante el análisis';
       setRunError(errorMessage);
       addRunLog(`ERROR: ${errorMessage}`);
       toast.error(errorMessage);
@@ -217,6 +211,30 @@ export default function Home() {
     setRunState('idle');
     setRunLogs([]);
     setRunError('');
+    setHighlightInsight(null);
+    setFocusModule(null);
+    setViewMode('graph');
+  };
+
+  const goToNode = (nodeId: string) => {
+    const node = graphData?.nodes.find((n) => n.id === nodeId);
+    if (node) {
+      setSelectedNode(node);
+      setViewMode('graph');
+    }
+  };
+
+  const showInsightInGraph = (insight: Insight) => {
+    setHighlightInsight(insight);
+    setFocusModule(null);
+    setViewMode('graph');
+  };
+
+  const exploreModule = (moduleId: string) => {
+    setGroupByModule(true);
+    setHighlightInsight(null);
+    setFocusModule(moduleId);
+    setViewMode('graph');
   };
 
   return (
@@ -239,7 +257,7 @@ export default function Home() {
       {/* 1. Logic Controller Bar */}
       <TopBar
         currentPath={currentPath}
-        onPathChange={setCurrentPath}
+        onPathChange={(p: string) => { setCurrentPath(p); setFileManifest([]); }}
         onRun={handleRun}
         status={status}
         onClear={clearProject}
@@ -247,14 +265,10 @@ export default function Home() {
         runState={runState}
         runtimeMode={runtimeMode}
         onBrowse={async () => {
-          console.log('🔍 Browse button clicked');
           if (isTauri()) {
-            console.log('🔍 Using Tauri folder picker');
             const selected = await selectFolder();
             if (selected) setCurrentPath(selected);
           } else {
-            console.log('🔍 Opening web FileExplorerModal');
-            // Open Server-Side File Picker
             setShowFileExplorer(true);
           }
         }}
@@ -263,66 +277,148 @@ export default function Home() {
       <FileExplorerModal
         isOpen={showFileExplorer}
         onClose={() => setShowFileExplorer(false)}
-        onSelect={(path, fileManifest) => {
+        onSelect={(path, manifest) => {
           setCurrentPath(path);
-          if (fileManifest) {
-            setFileManifest(fileManifest);
-            console.log(`Collected ${fileManifest.length} files for web analysis`);
-          }
+          setFileManifest(manifest || []);
           setShowFileExplorer(false);
         }}
         initialPath={currentPath}
-        collectFiles={runtimeMode === 'web'}
       />
 
-      {/* 2. Tri-Panel Layout (Natalia's Request) */}
+      {/* 2. Tri-Panel Layout */}
       <div className="flex flex-1 relative overflow-hidden">
 
-        {/* Panel A: Left (20% - Fixed width handled by component) */}
-        {/* Panel A: Left (20% - Fixed width handled by component) */}
+        {/* Panel A: Left */}
         <SidebarLeft
           data={graphData}
-          onNodeSelect={(nodeId: string) => {
-            // Find node obj
-            const node = graphData.nodes.find((n: any) => n.id === nodeId);
-            if (node) setSelectedNode(node);
-          }}
-          groupByFolder={groupByFolder}
-          setGroupByFolder={setGroupByFolder}
+          onNodeSelect={goToNode}
+          groupByModule={groupByModule}
+          setGroupByModule={setGroupByModule}
         />
 
         {/* Panel B: Center (Stage) */}
         <div className="flex-1 relative bg-black/20 flex flex-col">
 
-          {/* Layers */}
           {runState !== 'idle' && runState !== 'ready' && <RepoLoader />}
 
           {!graphData && status !== 'scanning' && <NoProjectState hasSelectedFolder={!!currentPath} runState={runState} />}
 
           <div className={`w-full h-full transition-opacity duration-1000 ${status === 'scanning' ? 'opacity-0' : 'opacity-100'}`}>
-            {/* Only render graph if we have data, but keep div to maintain layout */}
             <GraphViz
               data={graphData || { nodes: [], links: [] }}
               onNodeClick={setSelectedNode}
               performanceMode={perfMode}
               onStatsUpdate={setPerfStats}
-              groupByFolder={groupByFolder}
+              groupByModule={groupByModule}
+              highlightInsight={highlightInsight}
+              focusModule={focusModule}
+              zoomMode={zoomMode}
+              moveModuleMode={moveModuleMode}
             />
           </div>
 
-          {/* Center Overlay HUD */}
+          {/* View tabs */}
           {graphData && (
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 pointer-events-none">
-              <div className="bg-[#00F0FF]/10 border border-[#00F0FF]/30 px-4 py-1 rounded-full backdrop-blur">
-                <span className="text-[10px] tracking-[0.2em] text-[#00F0FF]">INTERACTIVE VIEW // ORBITAL</span>
-              </div>
+            <ViewTabs
+              active={viewMode}
+              onChange={(v) => {
+                setViewMode(v);
+                if (v !== 'graph') setFocusModule(null);
+              }}
+              insightCount={(graphData.insights || []).filter(i => i.severity !== 'info').length}
+            />
+          )}
+
+          {/* Mode toolbar: Zoom + Aprendizaje */}
+          {graphData && viewMode === 'graph' && (
+            <div className="absolute top-4 left-4 z-40 flex flex-col gap-2">
+              <button
+                onClick={() => { setZoomMode(z => !z); setMoveModuleMode(false); }}
+                title="Modo Zoom: haz clic en un archivo para aislar su cadena de conexiones (2 niveles)"
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold tracking-wide border backdrop-blur transition-all
+                  ${zoomMode
+                    ? 'bg-[#00F0FF]/20 border-[#00F0FF]/70 text-[#00F0FF] shadow-[0_0_15px_rgba(0,240,255,0.3)]'
+                    : 'bg-[#05060A]/80 border-white/15 text-gray-300 hover:border-[#00F0FF]/40 hover:text-[#00F0FF]'}`}
+              >
+                <ZoomIn size={15} />
+                Modo Zoom {zoomMode && '· ON'}
+              </button>
+              <button
+                onClick={() => {
+                  setMoveModuleMode(m => !m);
+                  setZoomMode(false);
+                  setGroupByModule(true);
+                }}
+                title="Mover módulos: arrastra cualquier esfera para desplazar TODO su módulo y separar las regiones"
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold tracking-wide border backdrop-blur transition-all
+                  ${moveModuleMode
+                    ? 'bg-[#FFD54F]/20 border-[#FFD54F]/70 text-[#FFD54F] shadow-[0_0_15px_rgba(255,213,79,0.3)]'
+                    : 'bg-[#05060A]/80 border-white/15 text-gray-300 hover:border-[#FFD54F]/40 hover:text-[#FFD54F]'}`}
+              >
+                <Move3d size={15} />
+                Mover módulos {moveModuleMode && '· ON'}
+              </button>
+              <button
+                onClick={() => setLearnOpen(true)}
+                title="Tour guiado: te explico paso a paso qué es cada módulo y qué archivos importan"
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold tracking-wide border backdrop-blur transition-all
+                  ${learnOpen
+                    ? 'bg-[#FFB74D]/20 border-[#FFB74D]/70 text-[#FFB74D]'
+                    : 'bg-[#05060A]/80 border-white/15 text-gray-300 hover:border-[#FFB74D]/40 hover:text-[#FFB74D]'}`}
+              >
+                <GraduationCap size={15} />
+                Modo Aprendizaje
+              </button>
             </div>
           )}
 
+          {/* Learning tour */}
+          {graphData && viewMode === 'graph' && learnOpen && (
+            <TourGuide
+              data={graphData}
+              onClose={() => { setLearnOpen(false); setFocusModule(null); }}
+              onFocusModule={(id) => { setGroupByModule(true); setFocusModule(id); }}
+              onGoToMentor={() => setViewMode('mentor')}
+              onSelectNode={goToNode}
+            />
+          )}
 
+          {/* Clear insight highlight chip */}
+          {graphData && viewMode === 'graph' && highlightInsight && (
+            <button
+              onClick={() => setHighlightInsight(null)}
+              className="absolute top-[4.5rem] left-1/2 -translate-x-1/2 z-40 px-4 py-1 rounded-full bg-white/10 border border-white/20 text-[10px] text-gray-300 hover:bg-white/20 transition-colors backdrop-blur"
+            >
+              ✕ Quitar resaltado rojo
+            </button>
+          )}
+
+          {/* Overlay views */}
+          {graphData && viewMode === 'dashboard' && (
+            <DashboardView
+              data={graphData}
+              onSelectModule={exploreModule}
+              onGoToMentor={() => setViewMode('mentor')}
+              onSelectNode={goToNode}
+            />
+          )}
+          {graphData && viewMode === 'modules' && (
+            <ModulesView
+              data={graphData}
+              onExploreModule={exploreModule}
+              onSelectNode={goToNode}
+            />
+          )}
+          {graphData && viewMode === 'mentor' && (
+            <MentorView
+              data={graphData}
+              onShowInGraph={showInsightInGraph}
+              projectPath={currentPath}
+            />
+          )}
 
           {/* Performance Panel */}
-          {graphData && (
+          {graphData && viewMode === 'graph' && (
             <PerformancePanel
               currentMode={perfMode}
               onModeChange={setPerfMode}
@@ -332,7 +428,7 @@ export default function Home() {
         </div>
 
         {/* Panel C: Right */}
-        <SidebarRight node={selectedNode} />
+        <SidebarRight node={selectedNode} data={graphData} onShowInsight={showInsightInGraph} />
 
       </div>
     </main>

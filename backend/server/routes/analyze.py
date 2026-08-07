@@ -50,7 +50,7 @@ async def analyze(request: AnalyzeRequest, semaphore: asyncio.Semaphore = Depend
             # though here we are just blocking this request. 
             # Ideally analyze_repo should be async or run_in_executor.
             # For simplicity in this refactor, we keep it direct but shielded by semaphore.
-            graph = analyze_repo(repo_path_str, options)
+            graph = analyze_repo(repo_path_str, options=options)
             return graph
         except Exception as e:
             logger.error(f"Analysis failed: {e}")
