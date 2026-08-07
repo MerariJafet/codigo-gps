@@ -56,7 +56,9 @@ frontend/src/
                       # module dragging (nodes + nebula raycast), physics
     DashboardView.tsx / ModulesView.tsx / MentorView.tsx / TourGuide.tsx
     LegendPanel.tsx   # draggable/collapsible legend
-    FileExplorerModal.tsx  # server-side file browser (no upload)
+    FileExplorerModal.tsx  # dual-mode picker: server-side browsing (absolute
+                           # paths, no upload) + optional browser-upload
+                           # manifest (filtered/capped) for Docker/remote
     charts/           # dependency-free SVG BarChart + Donut
   lib/apiClient.ts    # fetch wrapper via Next proxies
   types/index.ts      # Graph/Module/Insight/Summary types + severity color maps

@@ -75,7 +75,7 @@ npm run dev
 docker-compose up --build
 # frontend: http://localhost:3000 · backend: http://localhost:8001
 ```
-Note: with Docker, the backend can only browse paths mounted into the container (the repo itself is mounted at `/project`). For analyzing arbitrary local folders, prefer the native quick start.
+Note: with Docker, the backend can only browse paths mounted into the container (the repo itself is mounted at `/project`). To analyze any other local folder, use the **«Subir del navegador»** button in the file picker — it reads the folder in your browser (filtered: no `node_modules`, code files only, capped) and sends it as a manifest.
 </details>
 
 ## 🗺️ The four views
@@ -104,6 +104,20 @@ Note: with Docker, the backend can only browse paths mounted into the container 
 | 🎨 Module color | **Internal** — a normal import inside its own module |
 
 Hover any line for a tooltip: `source → target · category`. The legend panel is draggable and collapsible.
+
+## 🎮 Modes in action
+
+| ✋ **Move mode** — grab a whole nebula and rearrange the map | 🔍 **Zoom mode** — isolate a file + its 2-level chain |
+|---|---|
+| ![Move mode](docs/screenshots/move_mode.png) | ![Zoom mode](docs/screenshots/zoom_mode.png) |
+
+| 🚶 **Learning tour** — the camera flies module by module | 🧩 **Bridge inspector** — exact file-to-file crossings |
+|---|---|
+| ![Learning tour](docs/screenshots/learning_tour.png) | ![Bridge inspector](docs/screenshots/bridge_inspector.png) |
+
+## 🎓 The Mentor
+
+Findings are not just flags — each one teaches. Note the evidence below: detected **secrets are redacted** (`••••••••`) before they ever leave the analyzer, so they never reach the API, saved graphs, your screen or copied prompts.
 
 ![Mentor mode](docs/screenshots/mentor_mode.png)
 

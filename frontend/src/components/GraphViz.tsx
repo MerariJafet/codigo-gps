@@ -756,9 +756,10 @@ export default function GraphViz({ data, onNodeClick, performanceMode, onStatsUp
 
     if (typeof window === 'undefined') return null;
 
-    const activeNode = selectedNodeId
-        ? data?.nodes.find((n) => n.id === selectedNodeId)
-        : hoveredNode;
+    // Tooltip follows the cursor for HOVERED nodes only; a selected node's
+    // details live in the right sidebar (a pinned tooltip lingered over
+    // overlay views otherwise).
+    const activeNode = hoveredNode;
 
     const moduleStats = modules.map((m) => ({ path: m.name, count: m.file_count, color: m.color, id: m.id }));
 
@@ -830,9 +831,7 @@ export default function GraphViz({ data, onNodeClick, performanceMode, onStatsUp
 
             <div
                 className="absolute inset-0 pointer-events-none"
-                onMouseMove={(e) => {
-                    if (!selectedNodeId) setCursorPos({ x: e.clientX, y: e.clientY });
-                }}
+                onMouseMove={(e) => setCursorPos({ x: e.clientX, y: e.clientY })}
             />
 
             {highlightInsight && (

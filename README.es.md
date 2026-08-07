@@ -74,7 +74,7 @@ npm run dev
 docker-compose up --build
 # frontend: http://localhost:3000 · backend: http://localhost:8001
 ```
-Nota: con Docker el backend solo puede navegar rutas montadas en el contenedor (el propio repo se monta en `/project`). Para analizar carpetas arbitrarias de tu disco, usa el arranque nativo.
+Nota: con Docker el backend solo puede navegar rutas montadas en el contenedor (el propio repo se monta en `/project`). Para analizar cualquier otra carpeta local, usa el botón **«Subir del navegador»** del explorador — lee la carpeta en tu navegador (filtrada: sin `node_modules`, solo código, con topes) y la envía como manifiesto.
 </details>
 
 ## 🗺️ Las cuatro vistas
@@ -103,6 +103,16 @@ Nota: con Docker el backend solo puede navegar rutas montadas en el contenedor (
 | 🎨 Color del módulo | **Interna** — import normal dentro de su módulo |
 
 Pasa el cursor por cualquier línea para el tooltip `origen → destino · categoría`. La leyenda es arrastrable y colapsable.
+
+## 🎮 Los modos en acción
+
+| ✋ **Modo Mover** — agarra una nebulosa y reacomoda el mapa | 🔍 **Modo Zoom** — aísla un archivo + su cadena de 2 niveles |
+|---|---|
+| ![Modo Mover](docs/screenshots/move_mode.png) | ![Modo Zoom](docs/screenshots/zoom_mode.png) |
+
+| 🎓 **Maestro** — enseña y redacta los secretos (`••••••••`) | 🧩 **Inspector de puentes** — cruces archivo-a-archivo exactos |
+|---|---|
+| ![Maestro](docs/screenshots/mentor_mode.png) | ![Inspector de puentes](docs/screenshots/bridge_inspector.png) |
 
 ## 🤖 Para agentes IA
 
