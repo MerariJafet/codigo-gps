@@ -21,6 +21,7 @@ interface GraphVizProps {
     highlightInsight?: Insight | null;
     focusModule?: string | null;
     zoomMode?: boolean;
+    moveModuleMode?: boolean;
 }
 
 const endId = (x: any): string => (typeof x === 'object' && x !== null ? x.id : x);
@@ -76,7 +77,7 @@ function makeLabelSprite(text: string, subtext: string, color: string): THREE.Sp
     return sprite;
 }
 
-export default function GraphViz({ data, onNodeClick, performanceMode, onStatsUpdate, groupByModule, highlightInsight, focusModule, zoomMode = false }: GraphVizProps) {
+export default function GraphViz({ data, onNodeClick, performanceMode, onStatsUpdate, groupByModule, highlightInsight, focusModule, zoomMode = false, moveModuleMode = false }: GraphVizProps) {
     const fgRef = useRef<any>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const [dimensions, setDimensions] = useState({ w: 800, h: 600 });
@@ -119,6 +120,31 @@ export default function GraphViz({ data, onNodeClick, performanceMode, onStatsUp
         () => computeModuleCenters(modules, clusterSpacing),
         [modules, clusterSpacing]
     );
+
+    // User-dragged displacement per module (Modo Mover): effective center =
+    // computed center + accumulated offset.
+    const moduleOffsetsRef = useRef(new Map<string, { x: number; y: number; z: number }>());
+    const [offsetsVersion, setOffsetsVersion] = useState(0);
+
+    const effectiveCenters = useMemo(() => {
+        const m = new Map<string, { x: number; y: number; z: number }>();
+        moduleCenters.forEach((c, id) => {
+            const o = moduleOffsetsRef.current.get(id) || { x: 0, y: 0, z: 0 };
+            m.set(id, { x: c.x + o.x, y: c.y + o.y, z: c.z + o.z });
+        });
+        return m;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [moduleCenters, offsetsVersion]);
+
+    // Ref so the d3 cluster force always reads fresh centers without re-registering
+    const centersRef = useRef(effectiveCenters);
+    useEffect(() => { centersRef.current = effectiveCenters; }, [effectiveCenters]);
+
+    // New analysis: forget previous drags
+    useEffect(() => {
+        moduleOffsetsRef.current.clear();
+        setOffsetsVersion(v => v + 1);
+    }, [data]);
 
 
     // Seed initial node positions near their module center so the simulation
@@ -344,7 +370,7 @@ export default function GraphViz({ data, onNodeClick, performanceMode, onStatsUp
                 // pull/repulsion ratio stays constant while cooling
                 const k = 0.22 * alpha;
                 data?.nodes.forEach((node: any) => {
-                    const center = moduleCenters.get(node.module);
+                    const center = centersRef.current.get(node.module);
                     if (!center) return;
                     node.vx += (center.x - node.x) * k;
                     node.vy += (center.y - node.y) * k;
@@ -360,8 +386,9 @@ export default function GraphViz({ data, onNodeClick, performanceMode, onStatsUp
         if (typeof fg.d3ReheatSimulation === 'function') fg.d3ReheatSimulation();
     }, [performanceMode, groupByModule, data, moduleCenters, sceneReady]);
 
-    // Nebulas + labels per module region
+    // Nebulas + labels per module region (refs kept for live drag updates)
     const nebulaRef = useRef<THREE.Group | null>(null);
+    const nebulaMeshesRef = useRef(new Map<string, { mesh: THREE.Mesh; label: THREE.Sprite; radius: number }>());
     useEffect(() => {
         const scene = fgRef.current?.scene();
         if (!scene) return;
@@ -371,6 +398,7 @@ export default function GraphViz({ data, onNodeClick, performanceMode, onStatsUp
             nebulaRef.current.clear();
             nebulaRef.current = null;
         }
+        nebulaMeshesRef.current.clear();
         if (!groupByModule || modules.length === 0 || focusSet) return;
 
         const nebulas = new THREE.Group();
@@ -379,7 +407,7 @@ export default function GraphViz({ data, onNodeClick, performanceMode, onStatsUp
         scene.add(nebulas);
 
         modules.forEach((mod) => {
-            const center = moduleCenters.get(mod.id);
+            const center = effectiveCenters.get(mod.id);
             if (!center) return;
             const isHovered = hoveredModule === mod.id || focusModule === mod.id;
             const radius = clusterSpacing * (38 + 15 * Math.sqrt(mod.file_count));
@@ -402,13 +430,82 @@ export default function GraphViz({ data, onNodeClick, performanceMode, onStatsUp
             label.position.set(center.x, center.y + radius + 22, center.z);
             label.scale.set(110, 34, 1);
             nebulas.add(label);
+
+            nebulaMeshesRef.current.set(mod.id, { mesh, label, radius });
         });
-    }, [groupByModule, clusterSpacing, modules, moduleCenters, hoveredModule, focusModule, data, sceneReady, focusSet]);
+    }, [groupByModule, clusterSpacing, modules, effectiveCenters, hoveredModule, focusModule, data, sceneReady, focusSet]);
+
+    // --- Modo Mover: dragging any node displaces its whole module ----------
+    const dragSessionRef = useRef<{
+        nodeId: string;
+        module: string;
+        starts: Map<string, { x: number; y: number; z: number }>;
+        startOffset: { x: number; y: number; z: number };
+    } | null>(null);
+
+    const handleNodeDrag = useCallback((node: any, t: { x: number; y: number; z?: number }) => {
+        if (!moveModuleMode || !node.module || !t) return;
+        const translate = { x: t.x, y: t.y, z: t.z ?? 0 };
+        let s = dragSessionRef.current;
+        if (!s || s.nodeId !== node.id) {
+            const starts = new Map<string, { x: number; y: number; z: number }>();
+            data?.nodes.forEach((n: any) => {
+                if (n.module === node.module) starts.set(n.id, { x: n.x, y: n.y, z: n.z });
+            });
+            s = {
+                nodeId: node.id,
+                module: node.module,
+                starts,
+                startOffset: { ...(moduleOffsetsRef.current.get(node.module) || { x: 0, y: 0, z: 0 }) },
+            };
+            dragSessionRef.current = s;
+        }
+        // Pin every sibling at its start position + the drag translation
+        data?.nodes.forEach((n: any) => {
+            if (n.module !== s!.module || n.id === node.id) return;
+            const st = s!.starts.get(n.id);
+            if (!st) return;
+            n.fx = st.x + translate.x;
+            n.fy = st.y + translate.y;
+            n.fz = st.z + translate.z;
+        });
+        // Move the nebula + label live
+        const parts = nebulaMeshesRef.current.get(s.module);
+        const base = moduleCenters.get(s.module);
+        if (parts && base) {
+            const cx = base.x + s.startOffset.x + translate.x;
+            const cy = base.y + s.startOffset.y + translate.y;
+            const cz = base.z + s.startOffset.z + translate.z;
+            parts.mesh.position.set(cx, cy, cz);
+            parts.label.position.set(cx, cy + parts.radius + 22, cz);
+        }
+    }, [moveModuleMode, data, moduleCenters]);
+
+    const handleNodeDragEnd = useCallback((node: any, translate?: { x: number; y: number; z?: number }) => {
+        const s = dragSessionRef.current;
+        if (!moveModuleMode || !s || s.nodeId !== node.id) return;
+        const st = s.starts.get(node.id);
+        const t = translate
+            ? { x: translate.x, y: translate.y, z: translate.z ?? 0 }
+            : (st ? { x: node.x - st.x, y: node.y - st.y, z: node.z - st.z } : { x: 0, y: 0, z: 0 });
+        moduleOffsetsRef.current.set(s.module, {
+            x: s.startOffset.x + t.x,
+            y: s.startOffset.y + t.y,
+            z: s.startOffset.z + t.z,
+        });
+        // Release pins so physics re-settles around the new center
+        data?.nodes.forEach((n: any) => {
+            if (n.module === s.module) { n.fx = undefined; n.fy = undefined; n.fz = undefined; }
+        });
+        dragSessionRef.current = null;
+        setOffsetsVersion(v => v + 1);
+        fgRef.current?.d3ReheatSimulation?.();
+    }, [moveModuleMode, data]);
 
     // Camera focus when a module is selected from other views
     useEffect(() => {
         if (!focusModule || !fgRef.current) return;
-        const center = moduleCenters.get(focusModule);
+        const center = effectiveCenters.get(focusModule);
         if (!center) return;
         const dist = 1.9;
         fgRef.current.cameraPosition(
@@ -416,7 +513,7 @@ export default function GraphViz({ data, onNodeClick, performanceMode, onStatsUp
             center,
             1500
         );
-    }, [focusModule, moduleCenters]);
+    }, [focusModule, effectiveCenters]);
 
     const linkKey = (link: any) => `${endId(link.source)}|${endId(link.target)}`;
     const isDangerLink = useCallback((link: any) => {
@@ -559,6 +656,8 @@ export default function GraphViz({ data, onNodeClick, performanceMode, onStatsUp
                     linkColor={getLinkColor}
                     nodeVisibility={isNodeVisible}
                     linkVisibility={isLinkVisible}
+                    onNodeDrag={handleNodeDrag}
+                    onNodeDragEnd={handleNodeDragEnd}
                     onEngineStop={() => {
                         if (!hasFittedRef.current && fgRef.current?.zoomToFit) {
                             hasFittedRef.current = true;
@@ -598,6 +697,16 @@ export default function GraphViz({ data, onNodeClick, performanceMode, onStatsUp
                     <div className="bg-[#FF2E63]/15 border border-[#FF2E63]/50 px-5 py-2 rounded-full backdrop-blur flex items-center gap-2">
                         <span className="w-2 h-2 rounded-full bg-[#FF2E63] animate-pulse" />
                         <span className="text-xs text-[#FF8FA9] tracking-wide">{highlightInsight.title}</span>
+                    </div>
+                </div>
+            )}
+
+            {/* Move-module mode HUD */}
+            {moveModuleMode && (
+                <div className="absolute top-16 left-1/2 -translate-x-1/2 pointer-events-none">
+                    <div className="bg-[#FFD54F]/10 border border-[#FFD54F]/40 px-5 py-2 rounded-full backdrop-blur flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-[#FFD54F] animate-pulse" />
+                        <span className="text-xs text-[#FFD54F] tracking-wide">MODO MOVER · arrastra cualquier esfera y moverás TODO su módulo</span>
                     </div>
                 </div>
             )}

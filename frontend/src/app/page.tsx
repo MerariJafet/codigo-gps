@@ -20,7 +20,7 @@ import DashboardView from '@/components/DashboardView';
 import ModulesView from '@/components/ModulesView';
 import MentorView from '@/components/MentorView';
 import TourGuide from '@/components/TourGuide';
-import { ZoomIn, GraduationCap } from 'lucide-react';
+import { ZoomIn, GraduationCap, Move3d } from 'lucide-react';
 import { GraphData, Insight, Node } from '@/types';
 
 // Import GraphViz dynamically to avoid SSR hydration issues
@@ -53,6 +53,7 @@ export default function Home() {
   const [highlightInsight, setHighlightInsight] = useState<Insight | null>(null);
   const [focusModule, setFocusModule] = useState<string | null>(null);
   const [zoomMode, setZoomMode] = useState(false);
+  const [moveModuleMode, setMoveModuleMode] = useState(false);
   const [learnOpen, setLearnOpen] = useState(false);
 
   const [showFileExplorer, setShowFileExplorer] = useState(false);
@@ -302,6 +303,7 @@ export default function Home() {
               highlightInsight={highlightInsight}
               focusModule={focusModule}
               zoomMode={zoomMode}
+              moveModuleMode={moveModuleMode}
             />
           </div>
 
@@ -321,7 +323,7 @@ export default function Home() {
           {graphData && viewMode === 'graph' && (
             <div className="absolute top-4 left-4 z-40 flex flex-col gap-2">
               <button
-                onClick={() => setZoomMode(z => !z)}
+                onClick={() => { setZoomMode(z => !z); setMoveModuleMode(false); }}
                 title="Modo Zoom: haz clic en un archivo para aislar su cadena de conexiones (2 niveles)"
                 className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold tracking-wide border backdrop-blur transition-all
                   ${zoomMode
@@ -330,6 +332,21 @@ export default function Home() {
               >
                 <ZoomIn size={15} />
                 Modo Zoom {zoomMode && '· ON'}
+              </button>
+              <button
+                onClick={() => {
+                  setMoveModuleMode(m => !m);
+                  setZoomMode(false);
+                  setGroupByModule(true);
+                }}
+                title="Mover módulos: arrastra cualquier esfera para desplazar TODO su módulo y separar las regiones"
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold tracking-wide border backdrop-blur transition-all
+                  ${moveModuleMode
+                    ? 'bg-[#FFD54F]/20 border-[#FFD54F]/70 text-[#FFD54F] shadow-[0_0_15px_rgba(255,213,79,0.3)]'
+                    : 'bg-[#05060A]/80 border-white/15 text-gray-300 hover:border-[#FFD54F]/40 hover:text-[#FFD54F]'}`}
+              >
+                <Move3d size={15} />
+                Mover módulos {moveModuleMode && '· ON'}
               </button>
               <button
                 onClick={() => setLearnOpen(true)}
