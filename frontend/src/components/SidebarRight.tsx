@@ -16,7 +16,7 @@ export default function SidebarRight({ node, data, onShowInsight }: SidebarRight
     );
 
     const nodeInsights = (data?.insights || []).filter(i => i.nodes.includes(node.id));
-    const module = (data?.modules || []).find(m => m.id === node.module);
+    const nodeModule = (data?.modules || []).find(m => m.id === node.module);
 
     return (
         <div className="w-96 border-l border-[#9A4DFF]/20 bg-[#05060A]/90 backdrop-blur-md h-full z-20 flex flex-col">
@@ -26,10 +26,10 @@ export default function SidebarRight({ node, data, onShowInsight }: SidebarRight
                     <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-blue-500/20 text-blue-400">
                         {node.type}
                     </span>
-                    {module && (
+                    {nodeModule && (
                         <span className="px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1"
-                            style={{ background: module.color + '22', color: module.color }}>
-                            <Boxes size={10} /> {module.name}
+                            style={{ background: nodeModule.color + '22', color: nodeModule.color }}>
+                            <Boxes size={10} /> {nodeModule.name}
                         </span>
                     )}
                 </div>

@@ -77,7 +77,7 @@ export default function MentorView({ data, onShowInGraph, projectPath }: MentorV
                 </div>
                 <p className="text-gray-500 text-sm mb-6 tracking-wide">
                     No solo te muestro el código: te explico qué encontré, por qué importa y cómo arreglarlo.
-                    Pulsa <span className="text-[#FF2E63] font-bold">"Ver en el holograma"</span> para iluminar el problema con líneas rojas.
+                    Pulsa <span className="text-[#FF2E63] font-bold">«Ver en el holograma»</span> para iluminar el problema con líneas rojas.
                 </p>
 
                 {/* Filters */}

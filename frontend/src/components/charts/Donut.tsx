@@ -15,30 +15,33 @@ export default function Donut({ slices, centerLabel, centerValue }: DonutProps) 
     const total = slices.reduce((s, x) => s + x.value, 0) || 1;
     const R = 42;
     const C = 2 * Math.PI * R;
-    let offset = 0;
+    // Precompute each arc's dash length and starting offset (pure, no
+    // render-time reassignment)
+    const arcs = slices.reduce<{ list: (Slice & { dash: number; offset: number })[]; acc: number }>(
+        (st, s) => {
+            const dash = (s.value / total) * C;
+            st.list.push({ ...s, dash, offset: st.acc });
+            return { list: st.list, acc: st.acc + dash };
+        },
+        { list: [], acc: 0 }
+    ).list;
 
     return (
         <div className="flex items-center gap-5">
             <svg viewBox="0 0 120 120" className="w-32 h-32 shrink-0 -rotate-90">
                 <circle cx="60" cy="60" r={R} fill="none" stroke="#ffffff10" strokeWidth="14" />
-                {slices.map((s) => {
-                    const frac = s.value / total;
-                    const dash = frac * C;
-                    const el = (
-                        <circle
-                            key={s.label}
-                            cx="60" cy="60" r={R}
-                            fill="none"
-                            stroke={s.color}
-                            strokeWidth="14"
-                            strokeDasharray={`${dash} ${C - dash}`}
-                            strokeDashoffset={-offset}
-                            style={{ filter: `drop-shadow(0 0 3px ${s.color})`, transition: 'stroke-dasharray 0.7s' }}
-                        />
-                    );
-                    offset += dash;
-                    return el;
-                })}
+                {arcs.map((s) => (
+                    <circle
+                        key={s.label}
+                        cx="60" cy="60" r={R}
+                        fill="none"
+                        stroke={s.color}
+                        strokeWidth="14"
+                        strokeDasharray={`${s.dash} ${C - s.dash}`}
+                        strokeDashoffset={-s.offset}
+                        style={{ filter: `drop-shadow(0 0 3px ${s.color})`, transition: 'stroke-dasharray 0.7s' }}
+                    />
+                ))}
                 {centerValue && (
                     <g className="rotate-90" style={{ transformOrigin: '60px 60px' }}>
                         <text x="60" y="58" textAnchor="middle" fill="#fff" fontSize="16" fontWeight="bold">{centerValue}</text>
