@@ -20,6 +20,7 @@ interface GraphVizProps {
     groupByModule: boolean;
     highlightInsight?: Insight | null;
     focusModule?: string | null;
+    zoomMode?: boolean;
 }
 
 const endId = (x: any): string => (typeof x === 'object' && x !== null ? x.id : x);
@@ -75,7 +76,7 @@ function makeLabelSprite(text: string, subtext: string, color: string): THREE.Sp
     return sprite;
 }
 
-export default function GraphViz({ data, onNodeClick, performanceMode, onStatsUpdate, groupByModule, highlightInsight, focusModule }: GraphVizProps) {
+export default function GraphViz({ data, onNodeClick, performanceMode, onStatsUpdate, groupByModule, highlightInsight, focusModule, zoomMode = false }: GraphVizProps) {
     const fgRef = useRef<any>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const [dimensions, setDimensions] = useState({ w: 800, h: 600 });
@@ -135,6 +136,57 @@ export default function GraphViz({ data, onNodeClick, performanceMode, onStatsUp
             n.__seeded = true;
         });
     }, [data, moduleCenters]);
+
+    // --- Zoom mode: focus on one node + its connection chain (depth 2) ------
+    const [focusRoot, setFocusRoot] = useState<Node | null>(null);
+    const [focusSet, setFocusSet] = useState<Set<string> | null>(null);
+
+    const adjacency = useMemo(() => {
+        const adj = new Map<string, string[]>();
+        data?.links?.forEach((l) => {
+            const s = endId(l.source), t = endId(l.target);
+            if (!adj.has(s)) adj.set(s, []);
+            if (!adj.has(t)) adj.set(t, []);
+            adj.get(s)!.push(t);
+            adj.get(t)!.push(s);
+        });
+        return adj;
+    }, [data]);
+
+    const focusOnNode = useCallback((node: any) => {
+        const set = new Set<string>([node.id]);
+        let frontier = [node.id];
+        for (let depth = 0; depth < 2; depth++) {
+            const next: string[] = [];
+            frontier.forEach((id) => {
+                (adjacency.get(id) || []).forEach((nb) => {
+                    if (!set.has(nb)) { set.add(nb); next.push(nb); }
+                });
+            });
+            frontier = next;
+        }
+        setFocusRoot(node);
+        setFocusSet(set);
+    }, [adjacency]);
+
+    const clearFocus = useCallback(() => {
+        setFocusRoot(null);
+        setFocusSet(null);
+    }, []);
+
+    // Leaving zoom mode or loading new data clears the focus
+    useEffect(() => { if (!zoomMode) clearFocus(); }, [zoomMode, clearFocus]);
+    useEffect(() => { clearFocus(); }, [data, clearFocus]);
+
+    const isNodeVisible = useCallback((node: any) => {
+        if (!focusSet) return true;
+        return focusSet.has(node.id);
+    }, [focusSet]);
+
+    const isLinkVisible = useCallback((link: any) => {
+        if (!focusSet) return true;
+        return focusSet.has(endId(link.source)) && focusSet.has(endId(link.target));
+    }, [focusSet]);
 
     // Files that many others depend on: links flowing INTO them are "essential"
     const hubSet = useMemo(() => {
@@ -319,7 +371,7 @@ export default function GraphViz({ data, onNodeClick, performanceMode, onStatsUp
             nebulaRef.current.clear();
             nebulaRef.current = null;
         }
-        if (!groupByModule || modules.length === 0) return;
+        if (!groupByModule || modules.length === 0 || focusSet) return;
 
         const nebulas = new THREE.Group();
         nebulas.renderOrder = -1;
@@ -351,7 +403,7 @@ export default function GraphViz({ data, onNodeClick, performanceMode, onStatsUp
             label.scale.set(110, 34, 1);
             nebulas.add(label);
         });
-    }, [groupByModule, clusterSpacing, modules, moduleCenters, hoveredModule, focusModule, data, sceneReady]);
+    }, [groupByModule, clusterSpacing, modules, moduleCenters, hoveredModule, focusModule, data, sceneReady, focusSet]);
 
     // Camera focus when a module is selected from other views
     useEffect(() => {
@@ -374,12 +426,14 @@ export default function GraphViz({ data, onNodeClick, performanceMode, onStatsUp
 
     // Link taxonomy:
     //   danger    (red)    — cycle/tangle or part of the highlighted finding
+    //   api       (violet) — HTTP call from frontend code to a backend route
     //   bridge    (amber)  — crosses module boundaries (referential)
     //   essential (green)  — feeds a hub file many others depend on
     //   internal  (module) — normal import inside its module
-    type LinkCategory = 'danger' | 'bridge' | 'essential' | 'internal';
+    type LinkCategory = 'danger' | 'api' | 'bridge' | 'essential' | 'internal';
     const linkCategory = useCallback((link: any): LinkCategory => {
         if (isDangerLink(link)) return 'danger';
+        if ((link.flags || []).includes('api')) return 'api';
         if ((link.flags || []).includes('cross_module')) return 'bridge';
         if (hubSet.has(endId(link.target))) return 'essential';
         return 'internal';
@@ -387,12 +441,14 @@ export default function GraphViz({ data, onNodeClick, performanceMode, onStatsUp
 
     const CATEGORY_NAMES: Record<LinkCategory, string> = {
         danger: 'CRÍTICA — ciclo o hallazgo',
+        api: 'PUENTE HTTP — llamada a la API',
         bridge: 'PUENTE entre módulos',
         essential: 'ESENCIAL — alimenta un hub',
         internal: 'interna del módulo',
     };
     const BRIDGE_COLOR = '#FFD54F';
     const ESSENTIAL_COLOR = '#37FFB0';
+    const API_COLOR = '#B388FF';
 
     const hexToRgba = (hex: string, alpha: number) => {
         const n = parseInt(hex.slice(1), 16);
@@ -404,6 +460,7 @@ export default function GraphViz({ data, onNodeClick, performanceMode, onStatsUp
         if (cat === 'danger') return 2.8;
         if (selectedNodeId) return isLinkRelatedToSelection(link) ? 2.4 : 0.5;
         if (highlightInsight) return 0.5;
+        if (cat === 'api') return 2.2;
         if (cat === 'bridge') return 2.4;
         if (cat === 'essential') return 2.0;
         return performanceMode === 'high-performance' ? 0.9 : 1.6;
@@ -417,6 +474,7 @@ export default function GraphViz({ data, onNodeClick, performanceMode, onStatsUp
             if (isLinkRelatedToSelection(link)) return 'rgba(0, 255, 127, 1.0)';
             return 'rgba(68, 68, 68, 0.1)';
         }
+        if (cat === 'api') return hexToRgba(API_COLOR, 0.9);
         if (cat === 'bridge') return hexToRgba(BRIDGE_COLOR, 0.9);
         if (cat === 'essential') return hexToRgba(ESSENTIAL_COLOR, 0.85);
         const src: any = typeof link.source === 'object' ? link.source : null;
@@ -429,6 +487,7 @@ export default function GraphViz({ data, onNodeClick, performanceMode, onStatsUp
     const getParticleCount = (link: any) => {
         const cat = linkCategory(link);
         if (cat === 'danger') return 3;
+        if (cat === 'api') return 2;
         if (cat === 'bridge') return 2;
         if (cat === 'essential') return 3;
         if (performanceMode === 'high-performance') return 0;
@@ -437,6 +496,7 @@ export default function GraphViz({ data, onNodeClick, performanceMode, onStatsUp
     const getParticleColor = (link: any) => {
         const cat = linkCategory(link);
         if (cat === 'danger') return DANGER_COLOR;
+        if (cat === 'api') return API_COLOR;
         if (cat === 'bridge') return BRIDGE_COLOR;
         return ESSENTIAL_COLOR;
     };
@@ -447,7 +507,7 @@ export default function GraphViz({ data, onNodeClick, performanceMode, onStatsUp
         const src: any = typeof link.source === 'object' ? link.source : { label: link.source };
         const tgt: any = typeof link.target === 'object' ? link.target : { label: link.target };
         const cat = linkCategory(link);
-        const color = cat === 'danger' ? DANGER_COLOR : cat === 'bridge' ? BRIDGE_COLOR : cat === 'essential' ? ESSENTIAL_COLOR : '#9fb3c8';
+        const color = cat === 'danger' ? DANGER_COLOR : cat === 'api' ? API_COLOR : cat === 'bridge' ? BRIDGE_COLOR : cat === 'essential' ? ESSENTIAL_COLOR : '#9fb3c8';
         return `<div style="background:#05060Aee;border:1px solid ${color};border-radius:8px;padding:6px 10px;font-size:11px;color:#e0e6ed">
             <b>${src.label}</b> → <b>${tgt.label}</b><br/>
             <span style="color:${color};font-weight:700;font-size:10px">${CATEGORY_NAMES[cat]}</span>
@@ -497,6 +557,8 @@ export default function GraphViz({ data, onNodeClick, performanceMode, onStatsUp
                     backgroundColor="#00000000"
                     showNavInfo={false}
                     linkColor={getLinkColor}
+                    nodeVisibility={isNodeVisible}
+                    linkVisibility={isLinkVisible}
                     onEngineStop={() => {
                         if (!hasFittedRef.current && fgRef.current?.zoomToFit) {
                             hasFittedRef.current = true;
@@ -504,6 +566,7 @@ export default function GraphViz({ data, onNodeClick, performanceMode, onStatsUp
                         }
                     }}
                     onNodeClick={(node: any) => {
+                        if (zoomMode) focusOnNode(node);
                         setSelectedNodeId(node.id === selectedNodeId ? null : node.id);
                         const distance = 40;
                         const distRatio = 1 + distance / Math.hypot(node.x, node.y, node.z);
@@ -536,6 +599,29 @@ export default function GraphViz({ data, onNodeClick, performanceMode, onStatsUp
                         <span className="w-2 h-2 rounded-full bg-[#FF2E63] animate-pulse" />
                         <span className="text-xs text-[#FF8FA9] tracking-wide">{highlightInsight.title}</span>
                     </div>
+                </div>
+            )}
+
+            {/* Zoom mode HUD */}
+            {zoomMode && !focusRoot && (
+                <div className="absolute top-16 left-1/2 -translate-x-1/2 pointer-events-none">
+                    <div className="bg-[#00F0FF]/10 border border-[#00F0FF]/40 px-5 py-2 rounded-full backdrop-blur flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-[#00F0FF] animate-pulse" />
+                        <span className="text-xs text-[#00F0FF] tracking-wide">MODO ZOOM · haz clic en un archivo para aislar su cadena de conexiones</span>
+                    </div>
+                </div>
+            )}
+            {focusRoot && focusSet && (
+                <div className="absolute top-16 left-1/2 -translate-x-1/2 flex items-center gap-2">
+                    <div className="bg-[#00F0FF]/10 border border-[#00F0FF]/40 px-4 py-1.5 rounded-full backdrop-blur text-xs text-[#00F0FF]">
+                        🔍 {focusRoot.label} · {focusSet.size - 1} archivos en su cadena (2 niveles)
+                    </div>
+                    <button
+                        onClick={clearFocus}
+                        className="px-3 py-1.5 rounded-full bg-white/10 border border-white/20 text-[10px] text-gray-300 hover:bg-white/20 transition-colors backdrop-blur"
+                    >
+                        ✕ Ver todo
+                    </button>
                 </div>
             )}
 

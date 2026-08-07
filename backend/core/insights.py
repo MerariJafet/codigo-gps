@@ -198,7 +198,9 @@ def build_insights(nodes: List[dict], links: List[dict], node_modules: Dict[str,
     for n in nodes:
         g.add_node(n["id"])
     for l in links:
-        g.add_edge(l["source"], l["target"])
+        # HTTP bridges are not import edges: keep them out of cycle detection
+        if l.get("relation") != "api_call":
+            g.add_edge(l["source"], l["target"])
 
     label_of = {n["id"]: n["label"] for n in nodes}
 

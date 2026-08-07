@@ -90,6 +90,7 @@ export default function LegendPanel({ folderStats, onFolderHover }: LegendPanelP
                     <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 border-b border-white/10 pb-1">Conexiones</h3>
                     <div className="space-y-2 mb-4">
                         <LineItem color="#FF2E63" label="Crítica / dañada" desc="Ciclo o hallazgo señalado" />
+                        <LineItem color="#B388FF" label="Puente HTTP" desc="El frontend llama a esta ruta de la API" />
                         <LineItem color="#FFD54F" label="Puente entre módulos" desc="Referencia de un módulo a otro" />
                         <LineItem color="#37FFB0" label="Esencial" desc="Alimenta un archivo hub del sistema" />
                         <LineItem color="#7BD4FF" label="Interna" desc="Import normal, color de su módulo" />

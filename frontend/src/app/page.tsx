@@ -19,6 +19,8 @@ import ViewTabs, { ViewMode } from '@/components/ViewTabs';
 import DashboardView from '@/components/DashboardView';
 import ModulesView from '@/components/ModulesView';
 import MentorView from '@/components/MentorView';
+import TourGuide from '@/components/TourGuide';
+import { ZoomIn, GraduationCap } from 'lucide-react';
 import { GraphData, Insight, Node } from '@/types';
 
 // Import GraphViz dynamically to avoid SSR hydration issues
@@ -50,6 +52,8 @@ export default function Home() {
   const [viewMode, setViewMode] = useState<ViewMode>('graph');
   const [highlightInsight, setHighlightInsight] = useState<Insight | null>(null);
   const [focusModule, setFocusModule] = useState<string | null>(null);
+  const [zoomMode, setZoomMode] = useState(false);
+  const [learnOpen, setLearnOpen] = useState(false);
 
   const [showFileExplorer, setShowFileExplorer] = useState(false);
 
@@ -297,6 +301,7 @@ export default function Home() {
               groupByModule={groupByModule}
               highlightInsight={highlightInsight}
               focusModule={focusModule}
+              zoomMode={zoomMode}
             />
           </div>
 
@@ -309,6 +314,45 @@ export default function Home() {
                 if (v !== 'graph') setFocusModule(null);
               }}
               insightCount={(graphData.insights || []).filter(i => i.severity !== 'info').length}
+            />
+          )}
+
+          {/* Mode toolbar: Zoom + Aprendizaje */}
+          {graphData && viewMode === 'graph' && (
+            <div className="absolute top-4 left-4 z-40 flex flex-col gap-2">
+              <button
+                onClick={() => setZoomMode(z => !z)}
+                title="Modo Zoom: haz clic en un archivo para aislar su cadena de conexiones (2 niveles)"
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold tracking-wide border backdrop-blur transition-all
+                  ${zoomMode
+                    ? 'bg-[#00F0FF]/20 border-[#00F0FF]/70 text-[#00F0FF] shadow-[0_0_15px_rgba(0,240,255,0.3)]'
+                    : 'bg-[#05060A]/80 border-white/15 text-gray-300 hover:border-[#00F0FF]/40 hover:text-[#00F0FF]'}`}
+              >
+                <ZoomIn size={15} />
+                Modo Zoom {zoomMode && '· ON'}
+              </button>
+              <button
+                onClick={() => setLearnOpen(true)}
+                title="Tour guiado: te explico paso a paso qué es cada módulo y qué archivos importan"
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold tracking-wide border backdrop-blur transition-all
+                  ${learnOpen
+                    ? 'bg-[#FFB74D]/20 border-[#FFB74D]/70 text-[#FFB74D]'
+                    : 'bg-[#05060A]/80 border-white/15 text-gray-300 hover:border-[#FFB74D]/40 hover:text-[#FFB74D]'}`}
+              >
+                <GraduationCap size={15} />
+                Modo Aprendizaje
+              </button>
+            </div>
+          )}
+
+          {/* Learning tour */}
+          {graphData && viewMode === 'graph' && learnOpen && (
+            <TourGuide
+              data={graphData}
+              onClose={() => { setLearnOpen(false); setFocusModule(null); }}
+              onFocusModule={(id) => { setGroupByModule(true); setFocusModule(id); }}
+              onGoToMentor={() => setViewMode('mentor')}
+              onSelectNode={goToNode}
             />
           )}
 
@@ -342,6 +386,7 @@ export default function Home() {
             <MentorView
               data={graphData}
               onShowInGraph={showInsightInGraph}
+              projectPath={currentPath}
             />
           )}
 

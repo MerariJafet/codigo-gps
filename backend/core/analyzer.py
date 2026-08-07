@@ -64,6 +64,20 @@ def analyze_repo(repo_path: str | None = None, file_manifest: List[Dict] | None 
                 if source_id != target_id:
                     builder.add_dependency(source_id, target_id, "imports")
 
+    # 5b. Puentes HTTP: llamadas fetch/axios del frontend → rutas del backend
+    route_map = {}  # normalized route path -> [file paths]
+    for f, analysis in file_analysis_map.items():
+        for route in analysis.get("api_routes", []):
+            route_map.setdefault(route, []).append(f)
+
+    for f, analysis in file_analysis_map.items():
+        source_id = file_id_map[f]
+        for call in set(analysis.get("api_calls", [])):
+            for target_path in route_map.get(call, []):
+                target_id = file_id_map[target_path]
+                if source_id != target_id and not builder.graph.has_edge(source_id, target_id):
+                    builder.add_dependency(source_id, target_id, "api_call")
+
     # 6. Construir grafo base
     graph = builder.build()
 
@@ -97,6 +111,8 @@ def _enrich_graph(graph: Graph, file_findings: Dict[str, List[dict]]) -> Graph:
         sm, tm = node_modules.get(l.source), node_modules.get(l.target)
         if sm and tm and sm != tm:
             flags.add("cross_module")
+        if l.relation == "api_call":
+            flags.add("api")
         l.flags = sorted(flags)
 
     # Summary
@@ -154,41 +170,77 @@ def _scan_files(repo_path: str, options: AnalysisOptions) -> List[str]:
                 files.append(os.path.join(root, name))
     return files
 
+def _shared_prefix_len(p: str, source_file: str) -> int:
+    a, b = p.split("/"), source_file.split("/")
+    n = 0
+    while n < min(len(a), len(b)) and a[n] == b[n]:
+        n += 1
+    return n
+
+
+def _best_suffix_match(suffixes: List[str], source_file: str, all_files: List[str]) -> str | None:
+    """Find the file matching any suffix on a path-segment boundary,
+    preferring the candidate closest to the importing file."""
+    candidates = [p for p in all_files
+                  if any(p.endswith("/" + s) or p == s for s in suffixes)]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda p: _shared_prefix_len(p, source_file))
+
+
+_JS_EXTS = ['.ts', '.tsx', '.js', '.jsx']
+# Common path-alias prefixes (tsconfig "paths", Expo/Next conventions)
+_JS_ALIAS_PREFIXES = ('@/', '~/', 'src/', 'app/', 'components/', 'lib/', 'utils/')
+
+
 def _resolve_import(imp: str, source_file: str, current_dir: str, all_files: List[str], options: AnalysisOptions) -> str | None:
     # Python linking strategy
     if source_file.endswith(".py"):
-        # defined in backend/core/graph.py -> backend.core.graph
-        # match on path-segment boundary to avoid e.g. "modules.py" matching "test_modules.py"
-        expected_suffix = imp.replace(".", "/") + ".py"
-        candidates = [p for p in all_files
-                      if p.endswith("/" + expected_suffix) or p == expected_suffix]
-        if candidates:
-            # prefer the candidate sharing the deepest directory with the source file
-            def shared_prefix(p: str) -> int:
-                a, b = p.split("/"), source_file.split("/")
-                n = 0
-                while n < min(len(a), len(b)) and a[n] == b[n]:
-                    n += 1
-                return n
-            return max(candidates, key=shared_prefix)
-    
+        if imp.startswith("."):
+            # Relative import: climb one dir per extra dot beyond the first
+            dots = len(imp) - len(imp.lstrip("."))
+            rest = imp[dots:]
+            base = current_dir
+            for _ in range(dots - 1):
+                base = os.path.dirname(base)
+            target = os.path.join(base, rest.replace(".", "/")) if rest else base
+            for cand in (target + ".py", os.path.join(target, "__init__.py")):
+                cand = os.path.normpath(cand)
+                if cand in all_files:
+                    return cand
+            return None
+        # Absolute import: boundary-suffix match (module or its package __init__)
+        mod_path = imp.replace(".", "/")
+        return _best_suffix_match([mod_path + ".py", mod_path + "/__init__.py"],
+                                  source_file, all_files)
+
     # JS/TS linking strategy
     elif source_file.split('.')[-1] in ['js', 'ts', 'jsx', 'tsx']:
-        # Handle relative imports
-        if imp.startswith('.'):
-            # Resolve path
-            resolved_path = os.path.normpath(os.path.join(current_dir, imp))
-            
-            # Try to find exact match with extensions
-            # Priority: defined extension -> implicit extensions -> index files
-            candidates = [resolved_path + ext for ext in options.extensions if ext in ['.ts', '.tsx', '.js', '.jsx']]
-            candidates.extend([os.path.join(resolved_path, "index" + ext) for ext in options.extensions if ext in ['.ts', '.tsx', '.js', '.jsx']])
-            candidates.append(resolved_path) # Exact match or already has extension
+        exts = [e for e in options.extensions if e in _JS_EXTS] or _JS_EXTS
 
+        # Relative imports: exact resolution
+        if imp.startswith('.'):
+            resolved_path = os.path.normpath(os.path.join(current_dir, imp))
+            candidates = [resolved_path + ext for ext in exts]
+            candidates.extend([os.path.join(resolved_path, "index" + ext) for ext in exts])
+            candidates.append(resolved_path)
             for cand in candidates:
                 if cand in all_files:
                     return cand
-                    
+            return None
+
+        # Alias imports (@/components/X, ~/lib/y, src/z...): fuzzy suffix match
+        rest = None
+        for prefix in _JS_ALIAS_PREFIXES:
+            if imp.startswith(prefix):
+                rest = imp[len(prefix):] if prefix in ('@/', '~/') else imp
+                break
+        if rest:
+            suffixes = [rest + ext for ext in exts]
+            suffixes.extend([rest + "/index" + ext for ext in exts])
+            return _best_suffix_match(suffixes, source_file, all_files)
+        # Bare imports (react, expo, fastapi...) are external packages: ignore
+
     return None
 
 class CodeAnalyzer:
@@ -233,8 +285,13 @@ class CodeAnalyzer:
                     for alias in node.names:
                         imports.append(alias.name)
                 elif isinstance(node, ast.ImportFrom):
+                    level = "." * (node.level or 0)
                     if node.module:
-                        imports.append(node.module)
+                        imports.append(level + node.module)
+                    else:
+                        # "from . import x, y" — each name is a sibling module
+                        for alias in node.names:
+                            imports.append(level + alias.name)
                 elif isinstance(node, ast.ClassDef):
                     classes.append(node.name)
                 elif isinstance(node, ast.FunctionDef):
@@ -246,7 +303,8 @@ class CodeAnalyzer:
                 "functions": functions,
                 "loc": len(content.splitlines()),
                 "complexity": len(classes) + len(functions) + 1,
-                "findings": scan_content(file_path, content)
+                "findings": scan_content(file_path, content),
+                "api_routes": _extract_api_routes(content)
             }
         except Exception:
             return {"imports": [], "classes": [], "functions": [], "loc": 0}
@@ -286,7 +344,46 @@ class CodeAnalyzer:
                 "functions": functions,
                 "loc": len(content.splitlines()),
                 "complexity": len(classes) + len(functions) + 1,
-                "findings": scan_content(file_path, content)
+                "findings": scan_content(file_path, content),
+                "api_calls": _extract_api_calls(content)
             }
         except Exception:
             return {"imports": [], "classes": [], "functions": [], "loc": 0}
+
+
+# ---------------------------------------------------------------------------
+# HTTP bridge detection: FastAPI/Flask route declarations in the backend
+# matched against fetch/axios URL literals in the frontend.
+# ---------------------------------------------------------------------------
+
+_ROUTE_RE = re.compile(r"""@\w+\.(?:get|post|put|delete|patch|websocket)\(\s*['"]([^'"]+)['"]""")
+_CALL_LINE_RE = re.compile(r"""fetch|axios|apiClient|api\.|\.get\(|\.post\(|\.put\(|\.delete\(|\.patch\(|request\(""", re.I)
+_URL_RE = re.compile(r"""['"`](/[A-Za-z0-9_\-/{}:$.]+)['"`]|`([^`]*?)(/[A-Za-z0-9_\-/{}:$.]+)`""")
+_PARAM_SEG_RE = re.compile(r"\{[^}]*\}|:[A-Za-z_]+|\$\{[^}]*\}")
+
+
+def _normalize_api_path(path: str) -> str:
+    path = path.split("?")[0].rstrip("/").lower()
+    path = _PARAM_SEG_RE.sub("*", path)
+    # strip common mount prefixes so "/api/v1/pets" matches route "/pets"
+    for prefix in ("/api/v1", "/api/v2", "/api"):
+        if path.startswith(prefix + "/"):
+            path = path[len(prefix):]
+            break
+    return path or "/"
+
+
+def _extract_api_routes(content: str) -> List[str]:
+    return [_normalize_api_path(r) for r in _ROUTE_RE.findall(content)]
+
+
+def _extract_api_calls(content: str) -> List[str]:
+    calls = []
+    for line in content.splitlines():
+        if len(line) > 500 or not _CALL_LINE_RE.search(line):
+            continue
+        for m in _URL_RE.finditer(line):
+            url = m.group(1) or m.group(3)
+            if url and len(url) > 1 and not url.startswith("//"):
+                calls.append(_normalize_api_path(url))
+    return calls

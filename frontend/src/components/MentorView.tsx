@@ -1,10 +1,45 @@
 import { useState } from 'react';
-import { GraduationCap, ShieldAlert, Puzzle, Sparkles, ChevronDown, Crosshair, BookOpen, Wrench } from 'lucide-react';
+import { toast } from 'react-toastify';
+import { GraduationCap, ShieldAlert, Puzzle, Sparkles, ChevronDown, Crosshair, BookOpen, Wrench, Bot } from 'lucide-react';
 import { GraphData, Insight, SEVERITY_COLORS, SEVERITY_LABELS, CATEGORY_LABELS, Severity } from '../types';
 
 interface MentorViewProps {
     data: GraphData;
     onShowInGraph: (insight: Insight) => void;
+    projectPath?: string;
+}
+
+/** Builds a ready-to-paste prompt so an AI agent (Claude Code, etc.) can
+ *  analyze, fix and verify the finding autonomously. */
+export function buildAgentPrompt(insight: Insight, data: GraphData, projectPath?: string): string {
+    const labelOf = (id: string) => data.nodes.find(n => n.id === id)?.label || id.replace('file:', '');
+    const files = insight.nodes.map(labelOf);
+    const evidence = (insight.evidence || [])
+        .map(e => `- ${e.file}:${e.line} → ${e.snippet}`)
+        .join('\n');
+    const links = (insight.links || [])
+        .slice(0, 15)
+        .map(l => `- ${labelOf(l.source)} → ${labelOf(l.target)}`)
+        .join('\n');
+
+    return `Actúa como ingeniero de software senior. Trabaja en el proyecto${projectPath ? ` ubicado en: ${projectPath}` : ' actual'}.
+
+El analizador estático CÓDIGO GPS detectó este hallazgo:
+
+## Hallazgo
+- **Título:** ${insight.title}
+- **Categoría:** ${CATEGORY_LABELS[insight.category] || insight.category} · **Severidad:** ${SEVERITY_LABELS[insight.severity as Severity] || insight.severity}
+- **Qué se encontró:** ${insight.explanation}
+- **Por qué importa:** ${insight.why_matters}
+- **Recomendación del analizador:** ${insight.recommendation}
+${files.length ? `\n## Archivos afectados\n${files.map(f => `- ${f}`).join('\n')}` : ''}${evidence ? `\n\n## Evidencia (archivo:línea → fragmento)\n${evidence}` : ''}${links ? `\n\n## Conexiones implicadas\n${links}` : ''}
+
+## Tu tarea
+1. Lee los archivos afectados y CONFIRMA si el hallazgo es real o un falso positivo (por ejemplo, un secreto de prueba en un fixture). Sé honesto: si es falso positivo, dilo y detente.
+2. Si es real, explica la causa raíz en 2-3 frases claras.
+3. Corrige el problema siguiendo la recomendación (o justifica una alternativa mejor). Haz el cambio mínimo y limpio.
+4. Verifica: corre los tests del proyecto (o el linter/compilador si no hay tests) y confirma que nada se rompió.
+5. Reporta al final: qué estaba pasando, qué cambiaste, en qué archivos, y el resultado de la verificación. Sin exagerar ni inventar.`;
 }
 
 const CATEGORY_ICONS: Record<string, any> = {
@@ -13,7 +48,16 @@ const CATEGORY_ICONS: Record<string, any> = {
     quality: Sparkles,
 };
 
-export default function MentorView({ data, onShowInGraph }: MentorViewProps) {
+export default function MentorView({ data, onShowInGraph, projectPath }: MentorViewProps) {
+    const copyAgentPrompt = async (insight: Insight) => {
+        const prompt = buildAgentPrompt(insight, data, projectPath);
+        try {
+            await navigator.clipboard.writeText(prompt);
+            toast.success('Prompt copiado — pégalo en Claude Code o tu agente favorito');
+        } catch {
+            toast.error('No se pudo copiar al portapapeles');
+        }
+    };
     const insights = data.insights || [];
     const [filter, setFilter] = useState<string>('all');
     const [expanded, setExpanded] = useState<string | null>(insights[0]?.id ?? null);
@@ -106,15 +150,25 @@ export default function MentorView({ data, onShowInGraph }: MentorViewProps) {
                                             </div>
                                         )}
 
-                                        {(ins.nodes.length > 0 || ins.links.length > 0) && (
+                                        <div className="flex gap-2">
+                                            {(ins.nodes.length > 0 || ins.links.length > 0) && (
+                                                <button
+                                                    onClick={() => onShowInGraph(ins)}
+                                                    className="flex-1 py-2.5 rounded-lg text-xs font-black tracking-widest uppercase transition-all hover:brightness-125 flex items-center justify-center gap-2"
+                                                    style={{ background: '#FF2E6320', border: '1px solid #FF2E6366', color: '#FF6B8A' }}>
+                                                    <Crosshair size={14} />
+                                                    Ver en el holograma
+                                                </button>
+                                            )}
                                             <button
-                                                onClick={() => onShowInGraph(ins)}
-                                                className="w-full py-2.5 rounded-lg text-xs font-black tracking-widest uppercase transition-all hover:brightness-125 flex items-center justify-center gap-2"
-                                                style={{ background: '#FF2E6320', border: '1px solid #FF2E6366', color: '#FF6B8A' }}>
-                                                <Crosshair size={14} />
-                                                Ver en el holograma (líneas rojas)
+                                                onClick={() => copyAgentPrompt(ins)}
+                                                title="Copia un prompt completo para que un agente IA (Claude Code, etc.) analice, corrija y verifique este hallazgo"
+                                                className="flex-1 py-2.5 rounded-lg text-xs font-black tracking-widest uppercase transition-all hover:brightness-125 flex items-center justify-center gap-2"
+                                                style={{ background: '#B388FF20', border: '1px solid #B388FF66', color: '#C9A8FF' }}>
+                                                <Bot size={14} />
+                                                Prompt para agente IA
                                             </button>
-                                        )}
+                                        </div>
                                     </div>
                                 )}
                             </div>
