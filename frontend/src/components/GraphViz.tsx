@@ -481,6 +481,149 @@ export default function GraphViz({ data, onNodeClick, performanceMode, onStatsUp
         }
     }, [moveModuleMode, data, moduleCenters]);
 
+    // Dragging the big nebula sphere (or its label) moves the whole module.
+    // Custom raycast + camera-facing drag plane, since nebulas are scene
+    // decorations outside the library's node-drag system.
+    useEffect(() => {
+        const container = containerRef.current;
+        if (!container || !moveModuleMode) return;
+
+        const raycaster = new THREE.Raycaster();
+        let session: {
+            module: string;
+            plane: THREE.Plane;
+            startPoint: THREE.Vector3;
+            starts: Map<string, { x: number; y: number; z: number }>;
+            startOffset: { x: number; y: number; z: number };
+        } | null = null;
+
+        const ndcFromEvent = (e: PointerEvent) => {
+            const rect = container.getBoundingClientRect();
+            return new THREE.Vector2(
+                ((e.clientX - rect.left) / rect.width) * 2 - 1,
+                -((e.clientY - rect.top) / rect.height) * 2 + 1
+            );
+        };
+
+        const nebulaModuleOf = (obj: THREE.Object3D): string | null => {
+            for (const [modId, parts] of nebulaMeshesRef.current.entries()) {
+                if (obj === parts.mesh || obj === parts.label) return modId;
+            }
+            return null;
+        };
+
+        const isNodeObject = (obj: THREE.Object3D): boolean => {
+            let o: any = obj;
+            while (o) {
+                if (o.__graphObjType === 'node') return true;
+                o = o.parent;
+            }
+            return false;
+        };
+
+        const applyTranslate = (t: THREE.Vector3) => {
+            if (!session) return;
+            data?.nodes.forEach((n: any) => {
+                if (n.module !== session!.module) return;
+                const st = session!.starts.get(n.id);
+                if (!st) return;
+                n.fx = st.x + t.x;
+                n.fy = st.y + t.y;
+                n.fz = st.z + t.z;
+            });
+            const parts = nebulaMeshesRef.current.get(session.module);
+            const base = moduleCenters.get(session.module);
+            if (parts && base) {
+                const cx = base.x + session.startOffset.x + t.x;
+                const cy = base.y + session.startOffset.y + t.y;
+                const cz = base.z + session.startOffset.z + t.z;
+                parts.mesh.position.set(cx, cy, cz);
+                parts.label.position.set(cx, cy + parts.radius + 22, cz);
+            }
+        };
+
+        const onDown = (e: PointerEvent) => {
+            const fg = fgRef.current;
+            if (!fg?.camera || !fg?.scene || e.button !== 0) return;
+            const camera = fg.camera();
+            raycaster.setFromCamera(ndcFromEvent(e), camera);
+            const hits = raycaster.intersectObjects(fg.scene().children, true);
+            for (const h of hits) {
+                if (isNodeObject(h.object)) return; // node wins: library handles it
+                const modId = nebulaModuleOf(h.object);
+                if (!modId) continue;
+                // Start module drag on a plane facing the camera through the hit
+                const normal = new THREE.Vector3();
+                camera.getWorldDirection(normal);
+                const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(normal, h.point.clone());
+                const starts = new Map<string, { x: number; y: number; z: number }>();
+                data?.nodes.forEach((n: any) => {
+                    if (n.module === modId) starts.set(n.id, { x: n.x, y: n.y, z: n.z });
+                });
+                session = {
+                    module: modId,
+                    plane,
+                    startPoint: h.point.clone(),
+                    starts,
+                    startOffset: { ...(moduleOffsetsRef.current.get(modId) || { x: 0, y: 0, z: 0 }) },
+                };
+                const controls = fg.controls?.();
+                if (controls) controls.enabled = false;
+                e.stopPropagation();
+                e.preventDefault();
+                return;
+            }
+        };
+
+        const onMove = (e: PointerEvent) => {
+            if (!session) return;
+            const fg = fgRef.current;
+            if (!fg?.camera) return;
+            raycaster.setFromCamera(ndcFromEvent(e), fg.camera());
+            const point = new THREE.Vector3();
+            if (!raycaster.ray.intersectPlane(session.plane, point)) return;
+            applyTranslate(point.clone().sub(session.startPoint));
+        };
+
+        const onUp = (e: PointerEvent) => {
+            if (!session) return;
+            const fg = fgRef.current;
+            const point = new THREE.Vector3();
+            let t = new THREE.Vector3();
+            if (fg?.camera) {
+                raycaster.setFromCamera(ndcFromEvent(e), fg.camera());
+                if (raycaster.ray.intersectPlane(session.plane, point)) {
+                    t = point.clone().sub(session.startPoint);
+                }
+            }
+            moduleOffsetsRef.current.set(session.module, {
+                x: session.startOffset.x + t.x,
+                y: session.startOffset.y + t.y,
+                z: session.startOffset.z + t.z,
+            });
+            const modId = session.module;
+            data?.nodes.forEach((n: any) => {
+                if (n.module === modId) { n.fx = undefined; n.fy = undefined; n.fz = undefined; }
+            });
+            const controls = fg?.controls?.();
+            if (controls) controls.enabled = true;
+            session = null;
+            setOffsetsVersion(v => v + 1);
+            fg?.d3ReheatSimulation?.();
+        };
+
+        container.addEventListener('pointerdown', onDown, true);
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onUp);
+        return () => {
+            container.removeEventListener('pointerdown', onDown, true);
+            window.removeEventListener('pointermove', onMove);
+            window.removeEventListener('pointerup', onUp);
+            const controls = fgRef.current?.controls?.();
+            if (controls) controls.enabled = true;
+        };
+    }, [moveModuleMode, data, moduleCenters]);
+
     const handleNodeDragEnd = useCallback((node: any, translate?: { x: number; y: number; z?: number }) => {
         const s = dragSessionRef.current;
         if (!moveModuleMode || !s || s.nodeId !== node.id) return;
@@ -706,7 +849,7 @@ export default function GraphViz({ data, onNodeClick, performanceMode, onStatsUp
                 <div className="absolute top-16 left-1/2 -translate-x-1/2 pointer-events-none">
                     <div className="bg-[#FFD54F]/10 border border-[#FFD54F]/40 px-5 py-2 rounded-full backdrop-blur flex items-center gap-2">
                         <span className="w-2 h-2 rounded-full bg-[#FFD54F] animate-pulse" />
-                        <span className="text-xs text-[#FFD54F] tracking-wide">MODO MOVER · arrastra cualquier esfera y moverás TODO su módulo</span>
+                        <span className="text-xs text-[#FFD54F] tracking-wide">MODO MOVER · arrastra la burbuja grande (o cualquier esfera) para mover TODO el módulo</span>
                     </div>
                 </div>
             )}
