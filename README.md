@@ -1,133 +1,194 @@
-# CÓDIGO GPS 🌐
+<div align="center">
+
+# 🌐 CÓDIGO GPS
+
+### Navigate any codebase like a hologram — and let it *teach* you
 
 [![CI](https://github.com/MerariJafet/codigo-gps/actions/workflows/ci.yml/badge.svg)](https://github.com/MerariJafet/codigo-gps/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/github/v/release/MerariJafet/codigo-gps)](https://github.com/MerariJafet/codigo-gps/releases)
+[![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python&logoColor=white)](https://www.python.org/)
+[![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js)](https://nextjs.org/)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-> **Navigate your code like a hologram.** Interactive 3D visualization of complex codebases.
+**Point it at any repo → get an interactive 3D map of its modules, dependencies and problems, with a built-in mentor that explains everything in plain language.**
 
-![Hologram Demo](docs/demo.webp)
+🇲🇽 [Leer en español](README.es.md) · 🤖 [Guide for AI agents](AGENTS.md) · 🏗️ [Architecture](docs/ARCHITECTURE.md)
 
-## 📸 Screenshots
+![CÓDIGO GPS hologram with module regions](docs/screenshots/hologram_regions.png)
 
-| Dashboard | Hologram |
-|-----------|-----------|
-| ![Dashboard](docs/screenshots/dashboard.png) | ![Hologram](docs/screenshots/graph_hologram.png) |
+</div>
 
-## 🚀 What is CÓDIGO GPS?
+---
 
-Understanding large codebases is hard. Navigating flat files and nested folders doesn't reveal the true structure of software.
+## Why?
 
-**CÓDIGO GPS** transforms Git repositories into **interactive 3D graphs**, allowing developers and architects to visualize dependencies, complexity, and the real topology of their systems in real-time.
+File trees lie. A codebase's *real* structure is who-imports-whom, which modules are tangled together, where the hidden god-files live, and which line of code is quietly holding a hardcoded secret. CÓDIGO GPS renders all of that as an explorable 3D hologram — **and then explains it to you like a senior engineer would**.
 
-## ✨ Features
+## ✨ What it does
 
-- **Interactive 3D Hologram**: Visualize nodes (files) and edges (dependencies) in an immersive 3D environment.
-- **Nebulas**: Visual grouping of folders and modules to identify domains at a glance.
-- **Mentor Mode**: Intelligent analysis suggesting refactors and detecting code smells visually.
-- **Impact Analysis**: Select a node to see which parts of the system depend on it.
-- **Local Support**: Analyze your code without uploading to the cloud (100% Privacy).
+| | Feature | Description |
+|---|---------|-------------|
+| 🫧 | **Module regions** | Files auto-cluster into glowing "nebulas" per logical module, with 3D labels. See the blocks of your system at a glance. |
+| 🎨 | **Connection taxonomy** | Every dependency line is color-coded by meaning (see [reading the map](#-reading-the-map)). |
+| 🔮 | **HTTP bridges** | Detects FastAPI routes and matches them against `fetch`/`axios` calls — so frontend↔backend links show up even without imports. |
+| 🛡️ | **Analyst engine** | Static analysis for circular dependencies, god files, orphans, giant files, tangled modules, hardcoded secrets, `eval`/`exec`, SQL injection patterns, `shell=True`, insecure pickle/yaml, weak hashes, XSS sinks, open CORS and more. |
+| 🎓 | **Mentor mode** | Every finding comes with *what I found / why it matters / how to fix it* — teaching, not just flagging. |
+| 🤖 | **AI-agent ready** | One click copies a complete, self-contained prompt so Claude Code (or any coding agent) can verify, fix and test the finding autonomously. |
+| 📊 | **Dashboard** | Health score (A–F), language donut, complexity distribution, LOC per module, most-connected hubs. |
+| 🔍 | **Zoom mode** | Click a file → everything else disappears except its connection chain (2 levels deep). |
+| ✋ | **Move mode** | Grab a whole module (its nebula) and drag it to declutter the map. |
+| 🚶 | **Learning tour** | Guided step-by-step walkthrough: the camera flies to each module while cards explain what it is and which files matter. |
+| 🐘 | **No size limits** | Analysis runs server-side against your local disk — a 36 GB / 14,500-file repo maps in ~9 seconds. |
 
-## 🏗️ Architecture
+## 🚀 Quick start
 
-The system uses a modern client-server architecture. See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for details.
+**Requirements:** Python 3.12+, Node 20+.
 
-```mermaid
-graph LR
-    User["User"] --> Frontend["Frontend (Next.js + Three.js)"]
-    Frontend <-->|HTTP/REST| Backend["Backend (FastAPI)"]
-    Backend -->|Git/FS| LocalRepo["Local Repository"]
-    Backend -->|NetworkX| Graph["In-Memory Graph"]
+```bash
+git clone https://github.com/MerariJafet/codigo-gps.git
+cd codigo-gps
+./scripts/start.sh        # installs everything and starts both services
 ```
 
-- **Frontend**: Next.js 14, React Three Fiber (3D Visualization), TailwindCSS.
-- **Backend**: Python FastAPI, NetworkX (Graph Analysis), GitPython.
+Open **http://localhost:3000**, pick a project folder with the file browser (or type its path), hit **INITIALIZE RUN** — done.
 
-## 🛠️ Getting Started
+<details>
+<summary><b>Manual setup</b></summary>
 
-### Option A: Docker (Recommended) 🐳
+```bash
+# Backend (FastAPI on :8000)
+python3 -m venv .venv
+.venv/bin/pip install -r backend/requirements.txt
+.venv/bin/python -m uvicorn backend.server.main:app --port 8000
 
-Prerequisites: Docker and Docker Compose installed.
+# Frontend (Next.js on :3000) — in another terminal
+cd frontend
+npm install
+npm run dev
+```
+</details>
 
-1.  Clone the repository:
-    ```bash
-    git clone https://github.com/MerariJafet/codigo-gps.git
-    cd codigo-gps
-    ```
+<details>
+<summary><b>Docker</b></summary>
 
-2.  Spin up services:
-    ```bash
-    docker-compose up --build
-    ```
+```bash
+docker-compose up --build
+# frontend: http://localhost:3000 · backend: http://localhost:8001
+```
+Note: with Docker, the backend can only browse paths mounted into the container (the repo itself is mounted at `/project`). For analyzing arbitrary local folders, prefer the native quick start.
+</details>
 
-3.  Open in your browser:
-    - Frontend: [http://localhost:3000](http://localhost:3000)
-    - API Docs: [http://localhost:8000/docs](http://localhost:8000/docs)
+## 🗺️ The four views
 
-### Option B: Local Execution 💻
+| View | What you get |
+|------|--------------|
+| **Holograma** | The 3D force-graph: files as spheres, dependencies as lines, modules as colored regions. Orbit, zoom, hover any line to see *which file connects to which* and why. |
+| **Dashboard** | The project's x-ray: health gauge, severity chips, languages, complexity buckets, size per module, top hubs — everything clickable. |
+| **Módulos** | One card per module (cohesion %, key files, language) plus a **bridge inspector**: click any `A → B` chip to list the exact file-to-file connections crossing that boundary. |
+| **Maestro** | All findings, filterable by category, each expandable into its three teaching blocks — with **Ver en el holograma** (lights the problem up in red) and **Prompt para agente IA** (copies an agent-ready fix prompt). |
 
-Prerequisites: Python 3.10+, Node.js 18+.
+![Dashboard](docs/screenshots/dashboard.png)
 
-1.  Use the automatic start script (Linux/Mac):
-    ```bash
-    ./scripts/dev.sh
-    ```
+## 🎨 Reading the map
 
-2.  Or run manually:
+**Nodes** — one sphere per file. Size grows with connections; entrypoints glow white; hubs glow yellow; orphans are dimmed.
 
-    **Backend:**
-    ```bash
-    cd backend
-    python -m venv venv
-    source venv/bin/activate
-    pip install -r requirements.txt
-    uvicorn backend.main:app --reload --port 8000
-    ```
+**Lines** — color tells you what kind of dependency you're looking at:
 
-    **Frontend:**
-    ```bash
-    # In another terminal
-    cd frontend
-    npm install
-    npm run dev
-    ```
+| Color | Meaning |
+|-------|---------|
+| 🔴 Red | **Critical / damaged** — circular dependency, tangled modules, or the finding you highlighted |
+| 🟣 Violet | **HTTP bridge** — frontend code calling a backend API route |
+| 🟡 Amber | **Module bridge** — a reference crossing module boundaries |
+| 🟢 Green | **Essential** — feeds a hub file that many others depend on |
+| 🎨 Module color | **Internal** — a normal import inside its own module |
 
-## ⚙️ Configuration
+Hover any line for a tooltip: `source → target · category`. The legend panel is draggable and collapsible.
 
-The project works out-of-the-box, but you can configure environment variables.
-Copy `.env.example` or configure manually:
+![Mentor mode](docs/screenshots/mentor_mode.png)
 
-**Frontend (.env.local):**
-`API_BASE_URL`: Backend URL (default: `http://localhost:8000`)
+## 🤖 For AI agents
 
-## 📖 Usage
+CÓDIGO GPS is built to hand work off to coding agents:
 
-1.  **Load Repository**: Open the app and select your local project folder.
-2.  **Explore Graph**:
-    - **Left Click**: Rotate camera.
-    - **Right Click**: Pan.
-    - **Scroll**: Zoom.
-    - **Click on Node**: View file details and connections.
-3.  **Filter**: Use the sidebar to filter by file type or metrics.
+- Every finding in **Maestro** has a *Prompt para agente IA* button → copies a self-contained prompt (finding + evidence with `file:line` + affected files + verify-and-report instructions). Paste it into Claude Code, Cursor, or any agent.
+- The repo ships an [`AGENTS.md`](AGENTS.md) with the full machine-oriented map: architecture, commands, endpoints, conventions and known gotchas.
 
-## 🔧 Troubleshooting
+## 🏗️ How it works
 
--   **CORS Error**: Ensure you access via `localhost:3000`. If backend is on another port, adjust `next.config.ts`.
--   **File System Access**: Chrome/Edge require explicit permissions for local folders. If it fails, use "Upload ZIP" or the server explorer.
--   **Backend Offline**: Verify `http://localhost:8000/health`.
+```mermaid
+flowchart LR
+    subgraph Frontend["Frontend · Next.js 16 + Three.js"]
+        UI["4 views + 3 modes"]
+        FG["react-force-graph-3d"]
+    end
+    subgraph Backend["Backend · FastAPI"]
+        SC["Scanner\n(walk + ignore)"]
+        PA["Parsers\nPython AST · JS/TS regex"]
+        RE["Import resolver\naliases · relative · boundaries"]
+        HB["HTTP bridge matcher\nroutes ↔ fetch/axios"]
+        MO["Module engine\nregions · cohesion"]
+        IN["Insight engine\nsecurity · architecture · quality"]
+        GB["Graph builder\nNetworkX"]
+    end
+    Repo[("Local repo\n(any size)")] --> SC --> PA --> RE --> GB
+    PA --> HB --> GB
+    GB --> MO --> IN
+    IN -->|"JSON: nodes + links + modules\n+ insights + summary"| UI
+    UI <--> FG
+```
 
-## ⚡ Performance & Limits
+The analysis pipeline in one pass:
 
-CÓDIGO GPS is designed to handle small to medium codebases with high fluidity (>60 FPS).
-Check [BENCHMARKS.md](docs/BENCHMARKS.md) for detailed metrics and testing methodology.
+1. **Scan** the target folder (respecting ignore lists — `node_modules`, caches, etc.).
+2. **Parse** every file: imports, classes, functions, LOC, complexity — plus a security scan of the content.
+3. **Resolve** imports into file→file edges (TS path aliases like `@/`, Python relative imports, path-boundary matching).
+4. **Match HTTP bridges**: FastAPI route decorators ↔ frontend URL literals.
+5. **Detect modules** and compute per-module cohesion/coupling.
+6. **Run insights**: graph-level detectors (cycles, god files…) merged with content findings, each enriched with teaching text.
+7. **Score health** (A–F with diminishing penalties) and ship everything as one JSON graph.
+
+## 🔌 API
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/v1/analyze` | Analyze `{repo_path}` (or a `file_manifest`) → full graph JSON |
+| `GET` | `/api/v1/system/ls?path=` | Server-side directory listing (powers the file browser) |
+| `GET` | `/api/v1/graphs/{id}` | Retrieve a stored analysis |
+| `GET` | `/health` | Liveness check |
+
+The graph response contains `nodes`, `links` (with `flags`), `modules`, `module_links`, `insights` and `summary` — see [AGENTS.md](AGENTS.md#graph-response-shape) for the full shape.
+
+## 🧪 Development
+
+```bash
+# Backend tests
+.venv/bin/python -m pytest backend/tests -q
+
+# Frontend checks
+cd frontend && npx tsc --noEmit && npm run lint && npm run build
+```
+
+CI runs both suites on every PR.
 
 ## 🗺️ Roadmap
 
-- [ ] Support for more languages (Java, C++).
-- [ ] GitHub API integration for remote repos.
-- [ ] Real-time collaboration.
-- [ ] Desktop version (Electron/Tauri) - *In progress*.
+- [ ] More languages: Go, Rust, Java, C#
+- [ ] Git-history layer: hotspots by change frequency
+- [ ] Desktop packaging (Tauri) with native folder picker
+- [ ] Export the hologram as shareable interactive HTML
+- [ ] Deeper agent integration: run the fix loop from inside the app
+
+## 🤝 Contributing
+
+Issues and PRs welcome. Keep PRs focused, add tests for backend changes, and make sure `pytest` + `npm run lint` + `npm run build` pass.
 
 ## 📄 License
 
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+[MIT](LICENSE) — do whatever you want, just keep the notice.
+
+---
+
+<div align="center">
+<sub>Built with FastAPI · NetworkX · Next.js · Three.js · react-force-graph — and a lot of neon.</sub>
+</div>
