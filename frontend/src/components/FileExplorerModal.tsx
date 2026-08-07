@@ -1,10 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Folder, File, CornerLeftUp, X, Check, HardDrive, Home, RefreshCw } from 'lucide-react';
+import { Folder, File, CornerLeftUp, X, Check, HardDrive, Home, RefreshCw, Upload } from 'lucide-react';
 
 interface FileEntry {
     name: string;
     path: string;
     is_dir: boolean;
+    size: number;
+}
+
+export interface ManifestEntry {
+    path: string;
+    content: string;
     size: number;
 }
 
@@ -18,19 +24,74 @@ interface DirectoryListing {
 interface FileExplorerModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onSelect: (path: string) => void;
+    onSelect: (path: string, manifest?: ManifestEntry[]) => void;
     initialPath?: string;
 }
 
+// Browser-upload guardrails: skip heavy/derived dirs and cap volume so huge
+// repos don't freeze the tab (server-side path browsing has no such limits).
+const UPLOAD_IGNORE_DIRS = new Set(['.git', 'node_modules', '__pycache__', '.venv', 'venv', 'env', 'dist', 'build', '.next', '.turbo', 'coverage', 'target', '.pytest_cache', '.mypy_cache', '.idea', '.vscode']);
+const UPLOAD_EXT_RE = /\.(js|jsx|ts|tsx|py|java|cpp|c|h|cs|php|rb|go|rs|swift|kt|scala|html|css|scss|json|xml|yaml|yml|md|txt|toml|sh)$/i;
+const UPLOAD_MAX_FILES = 4000;
+const UPLOAD_MAX_FILE_SIZE = 400_000; // bytes per file
+
 /**
- * Server-side file browser: navigates the REAL filesystem through the local
- * backend (/api/v1/system/ls), so it returns absolute paths and nothing is
- * uploaded — project size is irrelevant.
+ * Project picker with two paths:
+ *  1. Server-side browsing (/api/v1/system/ls): absolute paths, nothing
+ *     uploaded, no size limit. Ideal when backend and browser share the disk.
+ *  2. Browser upload (File System Access API): for web/Docker setups where
+ *     the backend can NOT see your filesystem — files are read in the browser
+ *     and sent as a manifest (filtered + capped).
  */
 export default function FileExplorerModal({ isOpen, onClose, onSelect, initialPath }: FileExplorerModalProps) {
     const [listing, setListing] = useState<DirectoryListing | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [uploadStatus, setUploadStatus] = useState<string | null>(null);
+
+    const uploadFromBrowser = async () => {
+        if (!('showDirectoryPicker' in window)) {
+            setError('Tu navegador no soporta la subida de carpetas (usa Chrome/Edge, o navega por el servidor).');
+            return;
+        }
+        try {
+            // @ts-expect-error File System Access API (Chromium)
+            const dirHandle: FileSystemDirectoryHandle = await window.showDirectoryPicker();
+            setUploadStatus('Leyendo archivos…');
+            const files: ManifestEntry[] = [];
+            let truncated = false;
+
+            const walk = async (handle: FileSystemDirectoryHandle, base: string) => {
+                if (files.length >= UPLOAD_MAX_FILES) { truncated = true; return; }
+                // @ts-expect-error entries() exists on directory handles in Chromium
+                for await (const [name, child] of handle.entries()) {
+                    if (files.length >= UPLOAD_MAX_FILES) { truncated = true; return; }
+                    const rel = base ? `${base}/${name}` : name;
+                    if (child.kind === 'directory') {
+                        if (!UPLOAD_IGNORE_DIRS.has(name) && !name.startsWith('.')) await walk(child, rel);
+                    } else if (UPLOAD_EXT_RE.test(name)) {
+                        const file = await (child as FileSystemFileHandle).getFile();
+                        if (file.size > UPLOAD_MAX_FILE_SIZE) continue;
+                        files.push({ path: rel, content: await file.text(), size: file.size });
+                        if (files.length % 200 === 0) setUploadStatus(`Leyendo archivos… ${files.length}`);
+                    }
+                }
+            };
+            await walk(dirHandle, '');
+            setUploadStatus(null);
+            if (files.length === 0) {
+                setError('La carpeta no contiene archivos de código legibles.');
+                return;
+            }
+            onSelect(dirHandle.name + (truncated ? ' (parcial)' : ''), files);
+            onClose();
+        } catch (e: unknown) {
+            setUploadStatus(null);
+            if ((e as Error)?.name !== 'AbortError') {
+                setError('No se pudo leer la carpeta desde el navegador.');
+            }
+        }
+    };
 
     const loadPath = useCallback(async (path?: string) => {
         setLoading(true);
@@ -104,6 +165,13 @@ export default function FileExplorerModal({ isOpen, onClose, onSelect, initialPa
                     >
                         <RefreshCw size={13} />
                     </button>
+                    <button
+                        onClick={uploadFromBrowser}
+                        className="p-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-[#B388FF] hover:bg-[#B388FF]/10 rounded transition-colors"
+                        title="Para cuando el backend corre en Docker/remoto y no ve tu disco: lee la carpeta desde el navegador y la envía como manifiesto (filtrado, máx. 4000 archivos)"
+                    >
+                        <Upload size={13} /> Subir del navegador
+                    </button>
                     <div className="flex-1" />
                     <button
                         onClick={() => { if (listing) { onSelect(listing.path); onClose(); } }}
@@ -117,7 +185,12 @@ export default function FileExplorerModal({ isOpen, onClose, onSelect, initialPa
 
                 {/* List */}
                 <div className="flex-1 overflow-y-auto custom-scrollbar p-2 bg-black/40">
-                    {loading ? (
+                    {uploadStatus ? (
+                        <div className="flex flex-col items-center justify-center h-full text-[#B388FF] gap-4">
+                            <div className="w-8 h-8 border-2 border-[#B388FF] border-t-transparent rounded-full animate-spin"></div>
+                            <span className="text-xs uppercase tracking-widest animate-pulse">{uploadStatus}</span>
+                        </div>
+                    ) : loading ? (
                         <div className="flex flex-col items-center justify-center h-full text-[#00F0FF] gap-4">
                             <div className="w-8 h-8 border-2 border-[#00F0FF] border-t-transparent rounded-full animate-spin"></div>
                             <span className="text-xs uppercase tracking-widest animate-pulse">Escaneando…</span>

@@ -358,7 +358,7 @@ class CodeAnalyzer:
 
 _ROUTE_RE = re.compile(r"""@\w+\.(?:get|post|put|delete|patch|websocket)\(\s*['"]([^'"]+)['"]""")
 _CALL_LINE_RE = re.compile(r"""fetch|axios|apiClient|api\.|\.get\(|\.post\(|\.put\(|\.delete\(|\.patch\(|request\(""", re.I)
-_URL_RE = re.compile(r"""['"`](/[A-Za-z0-9_\-/{}:$.]+)['"`]|`([^`]*?)(/[A-Za-z0-9_\-/{}:$.]+)`""")
+_URL_RE = re.compile(r"""['"`](/[A-Za-z0-9_\-/{}:$.?&=]+)['"`]|`([^`]*?)(/[A-Za-z0-9_\-/{}:$.?&=]+)`""")
 _PARAM_SEG_RE = re.compile(r"\{[^}]*\}|:[A-Za-z_]+|\$\{[^}]*\}")
 
 

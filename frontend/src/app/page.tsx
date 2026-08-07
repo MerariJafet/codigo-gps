@@ -12,7 +12,7 @@ import RepoLoader from '@/components/RepoLoader';
 import NoProjectState from '@/components/NoProjectState';
 import PerformancePanel, { PerformanceMode } from '@/components/PerformancePanel';
 import { getTauriToken, isTauri, selectFolder } from '@/lib/tauri';
-import FileExplorerModal from '@/components/FileExplorerModal';
+import FileExplorerModal, { ManifestEntry } from '@/components/FileExplorerModal';
 import { apiClient } from '@/lib/apiClient';
 import RunOverlay, { RunState } from '@/components/RunOverlay';
 import ViewTabs, { ViewMode } from '@/components/ViewTabs';
@@ -57,6 +57,9 @@ export default function Home() {
   const [learnOpen, setLearnOpen] = useState(false);
 
   const [showFileExplorer, setShowFileExplorer] = useState(false);
+  // Browser-upload manifest: used when the backend cannot see the user's
+  // filesystem (Docker / remote). Empty → analyze by absolute repo_path.
+  const [fileManifest, setFileManifest] = useState<ManifestEntry[]>([]);
 
   // Runtime mode detection
   const [runtimeMode, setRuntimeMode] = useState<'web' | 'tauri'>('web');
@@ -156,9 +159,15 @@ export default function Home() {
       const headers: any = { 'Content-Type': 'application/json' };
       if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
 
-      // The local backend reads the path directly from disk — no upload,
-      // so project size doesn't matter.
-      const requestBody: any = { options: {}, repo_path: currentPath };
+      // Preferred: the local backend reads the path directly from disk (no
+      // upload, no size limit). Fallback: browser-collected manifest for
+      // setups where the backend can't see the user's filesystem.
+      const requestBody: any = { options: {} };
+      if (fileManifest.length > 0) {
+        requestBody.file_manifest = fileManifest;
+      } else {
+        requestBody.repo_path = currentPath;
+      }
 
       const res = await apiClient.post('/api/v1/analyze', requestBody, { headers });
 
@@ -248,7 +257,7 @@ export default function Home() {
       {/* 1. Logic Controller Bar */}
       <TopBar
         currentPath={currentPath}
-        onPathChange={setCurrentPath}
+        onPathChange={(p: string) => { setCurrentPath(p); setFileManifest([]); }}
         onRun={handleRun}
         status={status}
         onClear={clearProject}
@@ -268,8 +277,9 @@ export default function Home() {
       <FileExplorerModal
         isOpen={showFileExplorer}
         onClose={() => setShowFileExplorer(false)}
-        onSelect={(path) => {
+        onSelect={(path, manifest) => {
           setCurrentPath(path);
+          setFileManifest(manifest || []);
           setShowFileExplorer(false);
         }}
         initialPath={currentPath}

@@ -88,6 +88,19 @@ def test_scan_content_detects_secret():
     assert [f for f in findings if f["rule"] == "hardcoded_secret"]
 
 
+def test_secret_evidence_is_redacted():
+    findings = scan_content("x.py", 'API_KEY = "sk-live-abcdef1234567890"\n')
+    secret = [f for f in findings if f["rule"] == "hardcoded_secret"][0]
+    assert "sk-live-abcdef1234567890" not in secret["snippet"]
+    assert "••••" in secret["snippet"]
+
+
+def test_api_call_with_query_string_detected():
+    from backend.core.analyzer import _extract_api_calls
+    calls = _extract_api_calls("const r = await fetch('/api/v1/users?active=true&page=2')\n")
+    assert "/users" in calls
+
+
 def test_build_modules_stats():
     nodes = [
         {"id": "file:api/a.py", "label": "api/a.py",

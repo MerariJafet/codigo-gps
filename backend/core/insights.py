@@ -30,6 +30,7 @@ _CONTENT_RULES = [
             r"""(?ix)(?:api[_-]?key|apikey|secret|passwd|password|auth[_-]?token|access[_-]?key)
                 \s*[:=]\s*["'][A-Za-z0-9_\-+/=.]{8,}["']"""),
         "exclude": re.compile(r"(?i)(example|placeholder|changeme|your[_-]?|xxx|<|\{\{|process\.env|os\.environ|getenv)"),
+        "redact": True,
         "severity": "critical",
         "category": "security",
         "title": "Posible secreto hardcodeado",
@@ -141,6 +142,11 @@ _CONTENT_RULES = [
 
 MAX_MATCHES_PER_RULE_PER_FILE = 5
 
+# Quoted credential-looking runs — replaced before evidence is stored so the
+# actual secret never reaches the API response, saved graphs, the UI or
+# copied agent prompts.
+_REDACT_RE = re.compile(r"""(['"])[A-Za-z0-9_\-+/=.]{8,}\1""")
+
 
 def scan_content(rel_path: str, content: str) -> List[dict]:
     """Run content rules over one file. Returns raw findings with line numbers."""
@@ -155,10 +161,13 @@ def scan_content(rel_path: str, content: str) -> List[dict]:
                 exclude = rule.get("exclude")
                 if exclude and exclude.search(line):
                     continue
+                snippet = line.strip()[:160]
+                if rule.get("redact"):
+                    snippet = _REDACT_RE.sub(r"\1••••••••\1", snippet)
                 findings.append({
                     "rule": rule["key"],
                     "line": i,
-                    "snippet": line.strip()[:160],
+                    "snippet": snippet,
                 })
                 count += 1
                 if count >= MAX_MATCHES_PER_RULE_PER_FILE:
