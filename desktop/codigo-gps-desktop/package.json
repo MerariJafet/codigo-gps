@@ -1,12 +1,12 @@
 {
-    "name": "codigo-gps-desktop",
-    "version": "0.1.0",
-    "private": true,
-    "scripts": {
-        "tauri": "tauri"
-    },
-    "dependencies": {
-        "@tauri-apps/api": "^1",
-        "@tauri-apps/cli": "^1"
-    }
+  "name": "codigo-gps-desktop",
+  "version": "2.0.0",
+  "private": true,
+  "scripts": {
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^1",
+    "@tauri-apps/cli": "^1"
+  }
 }
